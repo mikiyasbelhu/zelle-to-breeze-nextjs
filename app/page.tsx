@@ -1,101 +1,434 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+import React, { useRef, useState, useEffect } from 'react';
+import * as XLSX from 'xlsx';
+import {
+  AppBar,
+  Toolbar,
+  Typography,
+  Drawer,
+  List,
+  ListItem,
+  ListItemText,
+  CssBaseline,
+  Box,
+  Button,
+  TextField,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Switch,
+  createTheme,
+  ThemeProvider,
+} from '@mui/material';
+import { DataGrid, GridColDef, GridPaginationModel } from '@mui/x-data-grid';
+import SearchIcon from '@mui/icons-material/Search';
+import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+const drawerWidth = 240;
+
+const FileUploader: React.FC = () => {
+  const [status, setStatus] = useState<string>('No file uploaded.');
+  const [batchNumber, setBatchNumber] = useState<string>('100');
+  const [batchName, setBatchName] = useState<string>('Zelle Import');
+  const [convertedFile, setConvertedFile] = useState<Blob | null>(null);
+  const [breezeAccounts, setBreezeAccounts] = useState<any[]>([]);
+  const [filteredAccounts, setFilteredAccounts] = useState<any[]>([]);
+  const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({ page: 0, pageSize: 10 });
+  const [activePage, setActivePage] = useState<'export' | 'edit'>('export');
+  const [dialogOpen, setDialogOpen] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [editAccount, setEditAccount] = useState<any | null>(null);
+  const [darkMode, setDarkMode] = useState<boolean>(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
+  const [accountIdToDelete, setAccountIdToDelete] = useState<number | null>(null);
+  const [showDownloadButton, setShowDownloadButton] = useState<boolean>(true);
+
+  const theme = createTheme({
+    palette: {
+      mode: darkMode ? 'dark' : 'light',
+    },
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const loadBreezeAccounts = async () => {
+      try {
+        const response = await fetch('/api/breezeAccounts');
+        const data = await response.json();
+        setBreezeAccounts(data);
+        setFilteredAccounts(data);
+      } catch (error) {
+        console.error('Error loading Breeze accounts:', error);
+        setBreezeAccounts([]);
+        setFilteredAccounts([]);
+      }
+    };
+
+    loadBreezeAccounts();
+  }, []);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setStatus('No file selected.');
+      return;
+    }
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+      const zelleSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const zelleData = XLSX.utils.sheet_to_json(zelleSheet);
+      const missingAccounts: string[] = [];
+
+      const breezeData = zelleData.map((row: any) => {
+        const description = row['Description'] || '';
+        const nameParts = extractName(description);
+        const fullName = `${nameParts.firstName} ${nameParts.lastName}`.trim();
+        let breezeId = getBreezeId(fullName);
+        if (!breezeId) {
+          missingAccounts.push(fullName);
+        }
+
+        return {
+          "Breeze ID": breezeId || 'MISSING',
+          "First Name": nameParts.firstName,
+          "Last Name": nameParts.lastName,
+          Date: row['Posting Date'],
+          Amount: row['Amount'],
+          Fund: 'Tithe',
+          Method: 'Zelle',
+          "Batch Name": batchName,
+          "Batch Number": batchNumber,
+          "Check Number": '',
+          Note: '',
+        };
+      });
+
+      if (missingAccounts.length > 0) {
+        const updatedAccounts = await handleMissingAccounts(missingAccounts, breezeData);
+        setBreezeAccounts(updatedAccounts);
+        setFilteredAccounts(updatedAccounts);
+        await saveBreezeAccounts(updatedAccounts);
+      }
+
+      const newWorkbook = XLSX.utils.book_new();
+      const newSheet = XLSX.utils.json_to_sheet(breezeData);
+      XLSX.utils.book_append_sheet(newWorkbook, newSheet, 'BreezeCMS');
+
+      const fileBlob = new Blob([XLSX.write(newWorkbook, { bookType: 'xlsx', type: 'array' })], {
+        type: 'application/octet-stream',
+      });
+
+      setConvertedFile(fileBlob);
+      setStatus('Conversion successful! Click "Download Converted File" to save.');
+      setShowDownloadButton(true);
+    } catch (error) {
+      console.error('Error processing file:', error);
+      setStatus('Error during conversion. Check the console for details.');
+    }
+  };
+
+  const getBreezeId = (name: string): number => {
+    for (const account of breezeAccounts) {
+      if (account.zelleAccounts.some((zelle: any) => zelle.name === name)) {
+        return account.id;
+      }
+    }
+    return 0;
+  };
+
+  const extractName = (description: string): { firstName: string; lastName: string } => {
+    if (!description.startsWith('Zelle payment from ')) {
+      return { firstName: '', lastName: '' };
+    }
+    const trimmedDescription = description.replace('Zelle payment from ', '').trim();
+    const words = trimmedDescription.split(' ');
+    const lastWord = words.pop();
+    const firstName = words.shift() || '';
+    return { firstName, lastName: words.join(' ') };
+  };
+
+  const handleMissingAccounts = async (missingAccounts: string[], breezeData: any[]): Promise<any[]> => {
+    const updatedAccounts = [...breezeAccounts];
+    for (const name of missingAccounts) {
+      const id = parseInt(prompt(`Please provide Breeze ID for ${name}:`) || '0', 10);
+      if (id) {
+        const existingAccount = updatedAccounts.find((account) => account.id === id);
+        if (existingAccount) {
+          existingAccount.zelleAccounts.push({ name });
+        } else {
+          updatedAccounts.push({ id, zelleAccounts: [{ name }] });
+        }
+        // Update the breezeData with the new ID
+        breezeData.forEach((entry: any) => {
+          if (`${entry["First Name"]} ${entry["Last Name"]}`.trim() === name) {
+            entry["Breeze ID"] = id;
+          }
+        });
+      }
+    }
+    return updatedAccounts;
+  };
+
+  const saveBreezeAccounts = async (accounts: any[]) => {
+    try {
+      const response = await fetch('/api/breezeAccounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(accounts),
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to save accounts: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error saving Breeze accounts:', error);
+      throw error;
+    }
+  };
+
+  const handleDownload = () => {
+    if (convertedFile) {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(convertedFile);
+      link.download = 'BreezeCMS_Output.xlsx';
+      link.click();
+
+      // Clear the file input value after the download is triggered
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      // Update the status message and hide the download button
+      setStatus('File downloaded successfully.');
+      setShowDownloadButton(false);
+    }
+  };
+
+  const handleDelete = (accountId: number) => {
+    setAccountIdToDelete(accountId);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (accountIdToDelete !== null) {
+      const updatedAccounts = breezeAccounts.filter((account) => account.id !== accountIdToDelete);
+
+      setBreezeAccounts(updatedAccounts);
+      setFilteredAccounts(updatedAccounts);
+      await saveBreezeAccounts(updatedAccounts);
+      setDeleteDialogOpen(false);
+      setAccountIdToDelete(null);
+    }
+  };
+
+  useEffect(() => {
+    const filtered = breezeAccounts.filter(
+        (acc: any) =>
+            acc.id === parseInt(searchQuery, 10) ||
+            acc.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+    setFilteredAccounts(filtered);
+  }, [searchQuery, breezeAccounts]);
+
+  const handleEdit = (account: any) => {
+    setEditAccount(account);
+    setDialogOpen(true);
+  };
+
+  const handleEditSave = () => {
+    const updatedAccounts = breezeAccounts.map((acc: any) => (acc.id === editAccount.id ? editAccount : acc));
+    setBreezeAccounts(updatedAccounts);
+    setFilteredAccounts(updatedAccounts);
+    setDialogOpen(false);
+    saveBreezeAccounts(updatedAccounts);
+  };
+
+  const renderContent = () => {
+    if (activePage === 'export') {
+      return (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6">Zelle to Breeze Converter</Typography>
+            <TextField
+                label="Batch Name"
+                value={batchName}
+                onChange={(e) => setBatchName(e.target.value)}
+                fullWidth
+                margin="normal"
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <TextField
+                label="Batch Number"
+                value={batchNumber}
+                onChange={(e) => setBatchNumber(e.target.value)}
+                fullWidth
+                margin="normal"
+            />
+            <Button variant="contained" component="label" sx={{ mt: 2 }}>
+              Upload File
+              <input type="file" hidden accept=".xlsx, .xls" onChange={handleFileUpload} ref={fileInputRef}/>
+            </Button>
+            <Typography variant="body1" sx={{ mt: 2 }}>{status}</Typography>
+            {convertedFile && showDownloadButton && (
+                <Button variant="outlined" onClick={handleDownload} sx={{ mt: 2 }}>
+                  Download Converted File
+                </Button>
+            )}
+          </Box>
+      );
+    }
+
+    if (activePage === 'edit') {
+      return (
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h6">Breeze Accounts</Typography>
+            <TextField
+                label="Search by ID or Name"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                fullWidth
+                margin="normal"
+                InputProps={{
+                  endAdornment: (
+                      <IconButton>
+                        <SearchIcon />
+                      </IconButton>
+                  ),
+                }}
+            />
+            <DataGrid
+                rows={filteredAccounts.map((account: any, index: number) => ({
+                  id: account.id,
+                  zelleAccounts: account.zelleAccounts,
+                  index,
+                }))}
+                columns={[
+                  { field: 'id', headerName: 'Breeze ID', width: 150 },
+                  {
+                    field: 'zelleAccounts',
+                    headerName: 'Zelle Accounts',
+                    flex: 2,
+                    renderCell: (params) => params.value.map((zelle: any) => zelle.name).join(', '),
+                  },
+                  {
+                    field: 'actions',
+                    headerName: 'Actions',
+                    width: 150,
+                    renderCell: (params) => (
+                        <>
+                          <IconButton onClick={() => handleEdit(params.row)}>
+                            <EditIcon />
+                          </IconButton>
+                          <IconButton onClick={() => handleDelete(params.row.id)}>
+                            <DeleteIcon />
+                          </IconButton>
+                        </>
+                    ),
+                  },
+                ]}
+                paginationModel={paginationModel}
+                onPaginationModelChange={setPaginationModel}
+                pageSizeOptions={[10, 20]}
+                autoHeight
+            />
+          </Box>
+      );
+    }
+  };
+
+  return (
+      <ThemeProvider theme={theme}>
+        <Box sx={{ display: 'flex' }}>
+          <CssBaseline />
+          <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+            <Toolbar>
+              <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+                Zelle to Breeze
+              </Typography>
+              <Switch
+                  checked={darkMode}
+                  onChange={() => setDarkMode(!darkMode)}
+                  icon={<DarkModeIcon />}
+                  checkedIcon={<DarkModeIcon />}
+              />
+            </Toolbar>
+          </AppBar>
+          <Drawer
+              variant="permanent"
+              sx={{
+                width: drawerWidth,
+                flexShrink: 0,
+                [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
+              }}
           >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+            <Toolbar />
+            <List>
+              <ListItem button selected={activePage === 'export'} onClick={() => setActivePage('export')}>
+                <ListItemText primary="Zelle to Breeze Converter" />
+              </ListItem>
+              <ListItem button selected={activePage === 'edit'} onClick={() => setActivePage('edit')}>
+                <ListItemText primary="Breeze Accounts" />
+              </ListItem>
+            </List>
+          </Drawer>
+          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+            <Toolbar />
+            {renderContent()}
+          </Box>
+          <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
+            <DialogTitle>Edit Account</DialogTitle>
+            <DialogContent>
+              {editAccount && (
+                  <Box>
+                    <TextField
+                        label="Breeze ID"
+                        value={editAccount.id}
+                        disabled
+                        fullWidth
+                        margin="normal"
+                    />
+                    <TextField
+                        label="Zelle Accounts"
+                        value={editAccount.zelleAccounts.map((zelle: any) => zelle.name).join(', ')}
+                        onChange={(e) =>
+                            setEditAccount({
+                              ...editAccount,
+                              zelleAccounts: e.target.value.split(',').map((name: string) => ({ name: name.trim() })),
+                            })
+                        }
+                        fullWidth
+                        margin="normal"
+                    />
+                  </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleEditSave} variant="contained">
+                Save
+              </Button>
+            </DialogActions>
+          </Dialog>
+          <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+            <DialogTitle>Confirm Delete</DialogTitle>
+            <DialogContent>
+              <Typography>Are you sure you want to delete this account?</Typography>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+              <Button onClick={confirmDelete} variant="contained" color="error">
+                Delete
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </Box>
+      </ThemeProvider>
   );
-}
+};
+
+export default FileUploader;
