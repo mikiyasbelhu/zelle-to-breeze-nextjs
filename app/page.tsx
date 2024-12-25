@@ -23,13 +23,19 @@ import {
   createTheme,
   ThemeProvider,
 } from '@mui/material';
-import { DataGrid, GridColDef, GridPaginationModel } from '@mui/x-data-grid';
+import { DataGrid, GridPaginationModel } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
+import { createClient } from '@supabase/supabase-js';
 
 const drawerWidth = 240;
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const FileUploader: React.FC = () => {
   const [status, setStatus] = useState<string>('No file uploaded.');
@@ -59,8 +65,8 @@ const FileUploader: React.FC = () => {
   useEffect(() => {
     const loadBreezeAccounts = async () => {
       try {
-        const response = await fetch('/api/breezeAccounts');
-        const data = await response.json();
+        const { data, error } = await supabase.from('breezeAccounts').select('*');
+        if (error) throw error;
         setBreezeAccounts(data);
         setFilteredAccounts(data);
       } catch (error) {
@@ -179,14 +185,8 @@ const FileUploader: React.FC = () => {
 
   const saveBreezeAccounts = async (accounts: any[]) => {
     try {
-      const response = await fetch('/api/breezeAccounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(accounts),
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to save accounts: ${response.statusText}`);
-      }
+      const { error } = await supabase.from('breezeAccounts').upsert(accounts);
+      if (error) throw error;
     } catch (error) {
       console.error('Error saving Breeze accounts:', error);
       throw error;
@@ -225,6 +225,13 @@ const FileUploader: React.FC = () => {
       await saveBreezeAccounts(updatedAccounts);
       setDeleteDialogOpen(false);
       setAccountIdToDelete(null);
+
+      try {
+        const { error } = await supabase.from('breezeAccounts').delete().eq('id', accountIdToDelete);
+        if (error) throw error;
+      } catch (error) {
+        console.error('Error deleting Breeze account:', error);
+      }
     }
   };
 
