@@ -57,6 +57,10 @@ const FileUploader: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
   const [accountIdToDelete, setAccountIdToDelete] = useState<number | null>(null);
   const [showDownloadButton, setShowDownloadButton] = useState<boolean>(true);
+  const [authDialogOpen, setAuthDialogOpen] = useState<boolean>(true);
+  const [username, setUsername] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   const theme = createTheme({
     palette: {
@@ -80,7 +84,17 @@ const FileUploader: React.FC = () => {
       }
     };
 
-    loadBreezeAccounts();
+    if (isAuthenticated) {
+      loadBreezeAccounts();
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const storedAuth = localStorage.getItem('isAuthenticated');
+    if (storedAuth === 'true') {
+      setIsAuthenticated(true);
+      setAuthDialogOpen(false);
+    }
   }, []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -261,6 +275,22 @@ const FileUploader: React.FC = () => {
     saveBreezeAccounts(updatedAccounts);
   };
 
+  const handleLogin = async () => {
+    try {
+      const { data, error } = await supabase.from('users').select('*').eq('username', username).eq('password', password);
+      if (error) throw error;
+      if (data.length > 0) {
+        setIsAuthenticated(true);
+        setAuthDialogOpen(false);
+        localStorage.setItem('isAuthenticated', 'true');
+      } else {
+        alert('Invalid username or password');
+      }
+    } catch (error) {
+      console.error('Error during authentication:', error);
+    }
+  };
+
   const renderContent = () => {
     if (activePage === 'export') {
       return (
@@ -359,7 +389,7 @@ const FileUploader: React.FC = () => {
           <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
             <Toolbar>
               <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                Zelle to Breeze
+                EEBC Dallas
               </Typography>
               <Switch
                   checked={darkMode}
@@ -389,7 +419,7 @@ const FileUploader: React.FC = () => {
           </Drawer>
           <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
             <Toolbar />
-            {renderContent()}
+            {isAuthenticated ? renderContent() : null}
           </Box>
           <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
             <DialogTitle>Edit Account</DialogTitle>
@@ -434,6 +464,31 @@ const FileUploader: React.FC = () => {
               <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
               <Button onClick={confirmDelete} variant="contained" color="error">
                 Delete
+              </Button>
+            </DialogActions>
+          </Dialog>
+          <Dialog open={authDialogOpen} onClose={() => setAuthDialogOpen(false)}>
+            <DialogTitle>Login</DialogTitle>
+            <DialogContent>
+              <TextField
+                  label="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  fullWidth
+                  margin="normal"
+              />
+              <TextField
+                  label="Password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  fullWidth
+                  margin="normal"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleLogin} variant="contained">
+                Login
               </Button>
             </DialogActions>
           </Dialog>
