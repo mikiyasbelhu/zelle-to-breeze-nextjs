@@ -61,6 +61,9 @@ const FileUploader: React.FC = () => {
   const [username, setUsername] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState<boolean>(false);
+  const [newAccountName, setNewAccountName] = useState<string>('');
+  const [newAccountId, setNewAccountId] = useState<number | null>(null);
 
   const theme = createTheme({
     palette: {
@@ -70,20 +73,20 @@ const FileUploader: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const loadBreezeAccounts = async () => {
-      try {
-        const { data, error } = await supabase.from('breezeAccounts').select('*');
-        if (error) throw error;
-        setBreezeAccounts(data);
-        setFilteredAccounts(data);
-      } catch (error) {
-        console.error('Error loading Breeze accounts:', error);
-        setBreezeAccounts([]);
-        setFilteredAccounts([]);
-      }
-    };
+  const loadBreezeAccounts = async () => {
+    try {
+      const { data, error } = await supabase.from('breezeAccounts').select('*');
+      if (error) throw error;
+      setBreezeAccounts(data);
+      setFilteredAccounts(data);
+    } catch (error) {
+      console.error('Error loading Breeze accounts:', error);
+      setBreezeAccounts([]);
+      setFilteredAccounts([]);
+    }
+  };
 
+  useEffect(() => {
     if (isAuthenticated) {
       loadBreezeAccounts();
     }
@@ -156,6 +159,35 @@ const FileUploader: React.FC = () => {
     } catch (error) {
       console.error('Error processing file:', error);
       setStatus('Error during conversion. Check the console for details.');
+    }
+  };
+
+  const handleBulkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setStatus('No file selected.');
+      return;
+    }
+
+    try {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const bulkData = XLSX.utils.sheet_to_json(sheet);
+
+      const accounts = bulkData.map((row: any) => ({
+        id: row['Breeze ID'],
+        zelleAccounts: [{ name: `${row['First Name']} ${row['Last Name']}`.trim() }],
+      }));
+
+      const { error } = await supabase.from('breezeAccounts').upsert(accounts);
+      if (error) throw error;
+
+      await loadBreezeAccounts();
+      setStatus('Bulk upload successful!');
+    } catch (error) {
+      console.error('Error processing bulk upload:', error);
+      setStatus('Error during bulk upload. Check the console for details.');
     }
   };
 
@@ -267,12 +299,16 @@ const FileUploader: React.FC = () => {
     setDialogOpen(true);
   };
 
-  const handleEditSave = () => {
-    const updatedAccounts = breezeAccounts.map((acc: any) => (acc.id === editAccount.id ? editAccount : acc));
-    setBreezeAccounts(updatedAccounts);
-    setFilteredAccounts(updatedAccounts);
-    setDialogOpen(false);
-    saveBreezeAccounts(updatedAccounts);
+  const handleEditSave = async () => {
+    try {
+      const updatedAccounts = breezeAccounts.map((acc: any) => (acc.id === editAccount.id ? editAccount : acc));
+      setBreezeAccounts(updatedAccounts);
+      setFilteredAccounts(updatedAccounts);
+      setDialogOpen(false);
+      await supabase.from('breezeAccounts').upsert(editAccount);
+    } catch (error) {
+      console.error('Error updating Breeze account:', error);
+    }
   };
 
   const handleLogin = async () => {
@@ -295,6 +331,20 @@ const FileUploader: React.FC = () => {
     setIsAuthenticated(false);
     localStorage.removeItem('isAuthenticated');
     setAuthDialogOpen(true);
+  };
+
+  const handleCreateAccount = async () => {
+    try {
+      const { error } = await supabase.from('breezeAccounts').insert([{ id: newAccountId, zelleAccounts: [{ name: newAccountName }] }]);
+      if (error) throw error;
+      await loadBreezeAccounts();
+      setCreateDialogOpen(false);
+      setNewAccountName('');
+      setNewAccountId(null);
+    } catch (error) {
+      console.error('Error creating Breeze account:', error);
+      setCreateDialogOpen(false);
+    }
   };
 
   const renderContent = () => {
@@ -334,6 +384,15 @@ const FileUploader: React.FC = () => {
       return (
           <Box sx={{ p: 3 }}>
             <Typography variant="h6">Breeze Accounts</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+              <Button variant="contained" onClick={() => setCreateDialogOpen(true)}>
+                Create New Account
+              </Button>
+              <Button variant="contained" component="label" sx={{ ml: 2 }}>
+                Bulk Upload Breeze Accounts
+                <input type="file" hidden accept=".xlsx, .xls" onChange={handleBulkUpload} />
+              </Button>
+            </Box>
             <TextField
                 label="Search by ID or Name"
                 value={searchQuery}
@@ -439,8 +498,10 @@ const FileUploader: React.FC = () => {
                   <Box>
                     <TextField
                         label="Breeze ID"
-                        value={editAccount.id}
+                        type="number"
                         disabled
+                        value={editAccount.id}
+                        onChange={(e) => setEditAccount({ ...editAccount, id: parseInt(e.target.value, 10) })}
                         fullWidth
                         margin="normal"
                     />
@@ -500,6 +561,32 @@ const FileUploader: React.FC = () => {
             <DialogActions>
               <Button onClick={handleLogin} variant="contained">
                 Login
+              </Button>
+            </DialogActions>
+          </Dialog>
+          <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
+            <DialogTitle>Create New Account</DialogTitle>
+            <DialogContent>
+              <TextField
+                  label="Account ID"
+                  type="number"
+                  value={newAccountId || ''}
+                  onChange={(e) => setNewAccountId(parseInt(e.target.value, 10))}
+                  fullWidth
+                  margin="normal"
+              />
+              <TextField
+                  label="Account Name"
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                  fullWidth
+                  margin="normal"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleCreateAccount} variant="contained">
+                Create
               </Button>
             </DialogActions>
           </Dialog>
