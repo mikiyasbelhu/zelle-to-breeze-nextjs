@@ -291,6 +291,12 @@ const FileUploader: React.FC = () => {
     }
   };
 
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    localStorage.removeItem('isAuthenticated');
+    setAuthDialogOpen(true);
+  };
+
   const renderContent = () => {
     if (activePage === 'export') {
       return (
@@ -397,6 +403,11 @@ const FileUploader: React.FC = () => {
                   icon={<DarkModeIcon />}
                   checkedIcon={<DarkModeIcon />}
               />
+              {isAuthenticated && (
+                <Button color="inherit" onClick={handleLogout}>
+                  Logout
+                </Button>
+              )}
             </Toolbar>
           </AppBar>
           <Drawer
