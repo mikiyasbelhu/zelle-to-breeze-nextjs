@@ -108,9 +108,9 @@ const FileUploader: React.FC = () => {
     }
 
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-      const zelleSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const text = await file.text();
+      const csvData = XLSX.read(text, { type: 'string' });
+      const zelleSheet = csvData.Sheets[csvData.SheetNames[0]];
       const zelleData = XLSX.utils.sheet_to_json(zelleSheet);
       const missingAccounts: string[] = [];
 
@@ -145,13 +145,10 @@ const FileUploader: React.FC = () => {
         await saveBreezeAccounts(updatedAccounts);
       }
 
-      const newWorkbook = XLSX.utils.book_new();
       const newSheet = XLSX.utils.json_to_sheet(breezeData);
-      XLSX.utils.book_append_sheet(newWorkbook, newSheet, 'BreezeCMS');
+      const csvOutput = XLSX.utils.sheet_to_csv(newSheet);
 
-      const fileBlob = new Blob([XLSX.write(newWorkbook, { bookType: 'xlsx', type: 'array' })], {
-        type: 'application/octet-stream',
-      });
+      const fileBlob = new Blob([csvOutput], { type: 'text/csv' });
 
       setConvertedFile(fileBlob);
       setStatus('Conversion successful! Click "Download Converted File" to save.');
@@ -170,9 +167,9 @@ const FileUploader: React.FC = () => {
     }
 
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const text = await file.text();
+      const csvData = XLSX.read(text, { type: 'string' });
+      const sheet = csvData.Sheets[csvData.SheetNames[0]];
       const bulkData = XLSX.utils.sheet_to_json(sheet);
 
       const accounts = bulkData.map((row: any) => ({
@@ -247,7 +244,7 @@ const FileUploader: React.FC = () => {
     if (convertedFile) {
       const link = document.createElement('a');
       link.href = URL.createObjectURL(convertedFile);
-      link.download = 'BreezeCMS_Output.xlsx';
+      link.download = 'BreezeCMS_Output.csv';
       link.click();
 
       // Clear the file input value after the download is triggered
@@ -368,7 +365,7 @@ const FileUploader: React.FC = () => {
             />
             <Button variant="contained" component="label" sx={{ mt: 2 }}>
               Upload File
-              <input type="file" hidden accept=".xlsx, .xls" onChange={handleFileUpload} ref={fileInputRef}/>
+              <input type="file" hidden accept=".csv" onChange={handleFileUpload} ref={fileInputRef}/>
             </Button>
             <Typography variant="body1" sx={{ mt: 2 }}>{status}</Typography>
             {convertedFile && showDownloadButton && (
@@ -390,7 +387,7 @@ const FileUploader: React.FC = () => {
               </Button>
               <Button variant="contained" component="label" sx={{ ml: 2 }}>
                 Bulk Upload Breeze Accounts
-                <input type="file" hidden accept=".xlsx, .xls" onChange={handleBulkUpload} />
+                <input type="file" hidden accept=".csv" onChange={handleBulkUpload} />
               </Button>
             </Box>
             <TextField
