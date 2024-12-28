@@ -64,6 +64,11 @@ const FileUploader: React.FC = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState<boolean>(false);
   const [newAccountName, setNewAccountName] = useState<string>('');
   const [newAccountId, setNewAccountId] = useState<number | null>(null);
+  const [missingAccounts, setMissingAccounts] = useState<string[]>([]);
+  const [currentMissingAccount, setCurrentMissingAccount] = useState<string | null>(null);
+  const [missingAccountId, setMissingAccountId] = useState<number | null>(null);
+  const [missingAccountDialogOpen, setMissingAccountDialogOpen] = useState<boolean>(false);
+  const [breezeData, setBreezeData] = useState<any[]>([]);
 
   const theme = createTheme({
     palette: {
@@ -138,21 +143,20 @@ const FileUploader: React.FC = () => {
         };
       });
 
+      setBreezeData(breezeData);
+
       if (missingAccounts.length > 0) {
-        const updatedAccounts = await handleMissingAccounts(missingAccounts, breezeData);
-        setBreezeAccounts(updatedAccounts);
-        setFilteredAccounts(updatedAccounts);
-        await saveBreezeAccounts(updatedAccounts);
+        setMissingAccounts(missingAccounts);
+        setCurrentMissingAccount(missingAccounts[0]);
+        setMissingAccountDialogOpen(true);
+      } else {
+        const newSheet = XLSX.utils.json_to_sheet(breezeData);
+        const csvOutput = XLSX.utils.sheet_to_csv(newSheet);
+        const fileBlob = new Blob([csvOutput], { type: 'text/csv' });
+        setConvertedFile(fileBlob);
+        setStatus('Conversion successful! Click "Download Converted File" to save.');
+        setShowDownloadButton(true);
       }
-
-      const newSheet = XLSX.utils.json_to_sheet(breezeData);
-      const csvOutput = XLSX.utils.sheet_to_csv(newSheet);
-
-      const fileBlob = new Blob([csvOutput], { type: 'text/csv' });
-
-      setConvertedFile(fileBlob);
-      setStatus('Conversion successful! Click "Download Converted File" to save.');
-      setShowDownloadButton(true);
     } catch (error) {
       console.error('Error processing file:', error);
       setStatus('Error during conversion. Check the console for details.');
@@ -342,6 +346,49 @@ const FileUploader: React.FC = () => {
       console.error('Error creating Breeze account:', error);
       setCreateDialogOpen(false);
     }
+  };
+
+  const handleMissingAccountSave = async () => {
+    if (missingAccountId && currentMissingAccount) {
+      const updatedAccounts = [...breezeAccounts];
+      const existingAccount = updatedAccounts.find((account) => account.id === missingAccountId);
+      if (existingAccount) {
+        existingAccount.zelleAccounts.push({ name: currentMissingAccount });
+      } else {
+        updatedAccounts.push({ id: missingAccountId, zelleAccounts: [{ name: currentMissingAccount }] });
+      }
+      setBreezeAccounts(updatedAccounts);
+      setFilteredAccounts(updatedAccounts);
+
+      const updatedBreezeData = breezeData.map((entry: any) => {
+        if (`${entry["First Name"]} ${entry["Last Name"]}`.trim() === currentMissingAccount) {
+          entry["Breeze ID"] = missingAccountId;
+        }
+        return entry;
+      });
+
+      setBreezeData(updatedBreezeData);
+
+      const nextMissingAccount = missingAccounts.slice(1);
+      setMissingAccounts(nextMissingAccount);
+      if (nextMissingAccount.length > 0) {
+        setCurrentMissingAccount(nextMissingAccount[0]);
+        setMissingAccountId(null);
+      } else {
+        setMissingAccountDialogOpen(false);
+        const newSheet = XLSX.utils.json_to_sheet(updatedBreezeData);
+        const csvOutput = XLSX.utils.sheet_to_csv(newSheet);
+        const fileBlob = new Blob([csvOutput], { type: 'text/csv' });
+        setConvertedFile(fileBlob);
+        setStatus('Conversion successful! Click "Download Converted File" to save.');
+        setShowDownloadButton(true);
+      }
+    }
+  };
+
+  const handleCancelImport = () => {
+    setMissingAccountDialogOpen(false);
+    setStatus('Import cancelled.');
   };
 
   const renderContent = () => {
@@ -584,6 +631,26 @@ const FileUploader: React.FC = () => {
               <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
               <Button onClick={handleCreateAccount} variant="contained">
                 Create
+              </Button>
+            </DialogActions>
+          </Dialog>
+          <Dialog open={missingAccountDialogOpen} onClose={() => setMissingAccountDialogOpen(false)}>
+            <DialogTitle>Missing Account</DialogTitle>
+            <DialogContent>
+              <Typography>Please provide Breeze ID for {currentMissingAccount}:</Typography>
+              <TextField
+                  label="Breeze ID"
+                  type="number"
+                  value={missingAccountId || ''}
+                  onChange={(e) => setMissingAccountId(parseInt(e.target.value, 10))}
+                  fullWidth
+                  margin="normal"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={handleCancelImport}>Cancel Import</Button>
+              <Button onClick={handleMissingAccountSave} variant="contained">
+                Save
               </Button>
             </DialogActions>
           </Dialog>
