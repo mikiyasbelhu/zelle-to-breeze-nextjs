@@ -118,11 +118,17 @@ const FileUploader: React.FC = () => {
       const text = await file.text();
       const csvData = XLSX.read(text, { type: 'string' });
       const zelleSheet = csvData.Sheets[csvData.SheetNames[0]];
-      const zelleData = XLSX.utils.sheet_to_json(zelleSheet);
+      const zelleData = XLSX.utils.sheet_to_json(zelleSheet, { header: 1 });
+
+      // Check if the first row is a header
+      const firstRow = zelleData[0];
+      const hasHeader = (firstRow as string[]).includes('Description') || (firstRow as string[]).includes('Posting Date') || (firstRow as string[]).includes('Amount');
+
+      const dataRows = hasHeader ? zelleData.slice(1) : zelleData;
       const missingAccounts: string[] = [];
 
-      const breezeData = zelleData.map((row: any) => {
-        const description = row['Description'] || '';
+      const breezeData = dataRows.map((row: any) => {
+        const description = row[2] || '';
         const nameParts = extractName(description);
         const fullName = `${nameParts.firstName} ${nameParts.lastName}`.trim();
         let breezeId = getBreezeId(fullName);
@@ -134,8 +140,8 @@ const FileUploader: React.FC = () => {
           "Breeze ID": breezeId || 'MISSING',
           "First Name": nameParts.firstName,
           "Last Name": nameParts.lastName,
-          Date: row['Posting Date'],
-          Amount: row['Amount'],
+          Date: row[1],
+          Amount: row[2],
           Fund: 'Tithe',
           Method: 'Zelle',
           "Batch Name": batchName,
