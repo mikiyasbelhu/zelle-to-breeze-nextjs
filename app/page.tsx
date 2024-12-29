@@ -389,6 +389,11 @@ const FileUploader: React.FC = () => {
   const handleCancelImport = () => {
     setMissingAccountDialogOpen(false);
     setStatus('Import cancelled.');
+    setConvertedFile(null);
+    setShowDownloadButton(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const renderContent = () => {
