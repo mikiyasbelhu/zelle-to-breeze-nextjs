@@ -194,7 +194,7 @@ const FileUploader: React.FC = () => {
 
   const getBreezeId = (name: string): number => {
     for (const account of breezeAccounts) {
-      if (account.zelleAccounts.some((zelle: any) => zelle.name === name)) {
+      if (account.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase() === name.toLowerCase())) {
         return account.id;
       }
     }
