@@ -29,6 +29,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { createClient } from '@supabase/supabase-js';
+import fuzzysort from 'fuzzysort';
 
 const drawerWidth = 240;
 
@@ -69,6 +70,7 @@ const FileUploader: React.FC = () => {
   const [missingAccountId, setMissingAccountId] = useState<number | null>(null);
   const [missingAccountDialogOpen, setMissingAccountDialogOpen] = useState<boolean>(false);
   const [breezeData, setBreezeData] = useState<any[]>([]);
+  const [suggestedAccounts, setSuggestedAccounts] = useState<any[]>([]);
 
   const theme = createTheme({
     palette: {
@@ -148,6 +150,7 @@ const FileUploader: React.FC = () => {
       if (missingAccounts.length > 0) {
         setMissingAccounts(missingAccounts);
         setCurrentMissingAccount(missingAccounts[0]);
+        await fetchSuggestedAccounts(missingAccounts[0]);
         setMissingAccountDialogOpen(true);
       } else {
         const newSheet = XLSX.utils.json_to_sheet(breezeData);
@@ -160,6 +163,30 @@ const FileUploader: React.FC = () => {
     } catch (error) {
       console.error('Error processing file:', error);
       setStatus('Error during conversion. Check the console for details.');
+    }
+  };
+
+  const fetchSuggestedAccounts = async (name: string) => {
+    try {
+      const { data, error } = await supabase.from('breezeAccounts').select('*');
+      if (error) throw error;
+
+      const searchableList = breezeAccounts.flatMap((data) =>
+        data.zelleAccounts.map((zelleAccount: { name: string }) => ({
+          id: data.id,
+          name: zelleAccount.name,
+        }))
+      );
+    
+      // Perform the fuzzy search
+      const results = fuzzysort.go(name, searchableList, { key: 'name' });
+      const filteredIds = results.map((result: any) => result.obj.id);
+      const matchedAccounts = data.filter((account: any) => filteredIds.includes(account.id));
+
+      setSuggestedAccounts(matchedAccounts);
+    } catch (error) {
+      console.error('Error fetching suggested accounts:', error);
+      setSuggestedAccounts([]);
     }
   };
 
@@ -374,6 +401,7 @@ const FileUploader: React.FC = () => {
       if (nextMissingAccount.length > 0) {
         setCurrentMissingAccount(nextMissingAccount[0]);
         setMissingAccountId(null);
+        await fetchSuggestedAccounts(nextMissingAccount[0]);
       } else {
         setMissingAccountDialogOpen(false);
         const newSheet = XLSX.utils.json_to_sheet(updatedBreezeData);
@@ -651,6 +679,18 @@ const FileUploader: React.FC = () => {
                   fullWidth
                   margin="normal"
               />
+              {suggestedAccounts.length > 0 && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle1">Suggested Accounts:</Typography>
+                  <List>
+                    {suggestedAccounts.map((account) => (
+                      <ListItem key={account.id} button onClick={() => setMissingAccountId(account.id)}>
+                        <ListItemText primary={`${account.id} - ${account.zelleAccounts.map((zelle: any) => zelle.name).join(', ')}`} />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
             </DialogContent>
             <DialogActions>
               <Button onClick={handleCancelImport}>Cancel Import</Button>
