@@ -116,7 +116,7 @@ const FileUploader: React.FC = () => {
 
     try {
       const text = await file.text();
-      const csvData = XLSX.read(text, { type: 'string' });
+      const csvData = XLSX.read(text, { type: 'string', cellDates: true });
       const zelleSheet = csvData.Sheets[csvData.SheetNames[0]];
       const zelleData = XLSX.utils.sheet_to_json(zelleSheet, { header: 1 });
 
@@ -127,29 +127,33 @@ const FileUploader: React.FC = () => {
       const dataRows = hasHeader ? zelleData.slice(1) : zelleData;
       const missingAccounts: string[] = [];
 
-      const breezeData = dataRows.map((row: any) => {
-        const description = row[2] || '';
-        const nameParts = extractName(description);
-        const fullName = `${nameParts.firstName} ${nameParts.lastName}`.trim();
-        let breezeId = getBreezeId(fullName);
-        if (!breezeId) {
-          missingAccounts.push(fullName);
-        }
+      const breezeData = dataRows
+        .filter((row: any) => row.some((cell: any) => cell !== undefined && cell !== null && cell !== '')) // Skip empty lines
+        .map((row: any) => {
+          const description = row[2] || '';
+          const nameParts = extractName(description);
+          const fullName = `${nameParts.firstName} ${nameParts.lastName}`.trim();
+          let breezeId = getBreezeId(fullName);
+          if (!breezeId) {
+            missingAccounts.push(fullName);
+          }
 
-        return {
-          "Breeze ID": breezeId || 'MISSING',
-          "First Name": nameParts.firstName,
-          "Last Name": nameParts.lastName,
-          Date: row[1],
-          Amount: row[2],
-          Fund: 'Tithe',
-          Method: 'Zelle',
-          "Batch Name": batchName,
-          "Batch Number": batchNumber,
-          "Check Number": '',
-          Note: '',
-        };
-      });
+          const date = typeof row[1] === 'string' ? row[1] : row[1].toLocaleDateString('en-US');
+
+          return {
+            "Breeze ID": breezeId || 'MISSING',
+            "First Name": nameParts.firstName,
+            "Last Name": nameParts.lastName,
+            Date: date,
+            Amount: row[3],
+            Fund: 'Tithe',
+            Method: 'Zelle',
+            "Batch Number": batchNumber,
+            "Batch Name": batchName,
+            "Check Number": '',
+            Note: '',
+          };
+        });
 
       setBreezeData(breezeData);
 
@@ -226,8 +230,9 @@ const FileUploader: React.FC = () => {
   };
 
   const getBreezeId = (name: string): number => {
+    const normalizedName = name.toLowerCase().replace(/\s+/g, ' ').trim();
     for (const account of breezeAccounts) {
-      if (account.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase() === name.toLowerCase())) {
+      if (account.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase().replace(/\s+/g, ' ').trim() === normalizedName)) {
         return account.id;
       }
     }
@@ -401,6 +406,12 @@ const FileUploader: React.FC = () => {
       });
 
       setBreezeData(updatedBreezeData);
+
+      try {
+        await supabase.from('breezeAccounts').upsert({ id: missingAccountId, zelleAccounts: [{ name: currentMissingAccount }] });
+      } catch (error) {
+        console.error('Error updating Breeze account:', error);
+      }
 
       const nextMissingAccount = missingAccounts.slice(1);
       setMissingAccounts(nextMissingAccount);
