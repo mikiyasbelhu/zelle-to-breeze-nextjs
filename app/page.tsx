@@ -380,6 +380,11 @@ const FileUploader: React.FC = () => {
   };
 
   const handleCreateAccount = async () => {
+    // Add null check for newAccountId
+    if (newAccountId === null) {
+      alert("Please enter a valid Account ID");
+      return;
+    }
     try {
       const account = { id: newAccountId, zelleAccounts: [{ name: newAccountName }] };
       await setDoc(doc(db, 'breezeAccounts', newAccountId.toString()), account);
