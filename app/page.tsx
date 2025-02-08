@@ -28,19 +28,23 @@ import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
-import { createClient } from '@supabase/supabase-js';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc, query, where } from 'firebase/firestore';
 import fuzzysort from 'fuzzysort';
 
 const drawerWidth = 240;
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing Supabase URL or Anon Key');
-}
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 const FileUploader: React.FC = () => {
   const [status, setStatus] = useState<string>('No file uploaded.');
@@ -82,8 +86,9 @@ const FileUploader: React.FC = () => {
 
   const loadBreezeAccounts = async () => {
     try {
-      const { data, error } = await supabase.from('breezeAccounts').select('*');
-      if (error) throw error;
+      const breezeCol = collection(db, 'breezeAccounts');
+      const breezeSnapshot = await getDocs(breezeCol);
+      const data = breezeSnapshot.docs.map(docSnap => ({ id: parseInt(docSnap.id), ...docSnap.data() }));
       setBreezeAccounts(data);
       setFilteredAccounts(data);
     } catch (error) {
@@ -178,8 +183,9 @@ const FileUploader: React.FC = () => {
 
   const fetchSuggestedAccounts = async (name: string) => {
     try {
-      const { data, error } = await supabase.from('breezeAccounts').select('*');
-      if (error) throw error;
+      const breezeCol = collection(db, 'breezeAccounts');
+      const breezeSnapshot = await getDocs(breezeCol);
+      const data = breezeSnapshot.docs.map(docSnap => ({ id: parseInt(docSnap.id), ...docSnap.data() }));
 
       const searchableList = breezeAccounts.flatMap((data) =>
         data.zelleAccounts.map((zelleAccount: { name: string }) => ({
@@ -213,13 +219,13 @@ const FileUploader: React.FC = () => {
       const sheet = csvData.Sheets[csvData.SheetNames[0]];
       const bulkData = XLSX.utils.sheet_to_json(sheet);
 
-      const accounts = bulkData.map((row: any) => ({
-        id: row['Breeze ID'],
-        zelleAccounts: [{ name: `${row['First Name']} ${row['Last Name']}`.trim() }],
+      await Promise.all(bulkData.map(async (row: any) => {
+        const account = {
+          id: row['Breeze ID'],
+          zelleAccounts: [{ name: `${row['First Name']} ${row['Last Name']}`.trim() }],
+        };
+        await setDoc(doc(db, 'breezeAccounts', account.id.toString()), account, { merge: true });
       }));
-
-      const { error } = await supabase.from('breezeAccounts').upsert(accounts);
-      if (error) throw error;
 
       await loadBreezeAccounts();
       setStatus('Bulk upload successful!');
@@ -274,8 +280,9 @@ const FileUploader: React.FC = () => {
 
   const saveBreezeAccounts = async (accounts: any[]) => {
     try {
-      const { error } = await supabase.from('breezeAccounts').upsert(accounts);
-      if (error) throw error;
+      await Promise.all(accounts.map(async (account) => {
+        await setDoc(doc(db, 'breezeAccounts', account.id.toString()), account, { merge: true });
+      }));
     } catch (error) {
       console.error('Error saving Breeze accounts:', error);
       throw error;
@@ -316,8 +323,7 @@ const FileUploader: React.FC = () => {
       setAccountIdToDelete(null);
 
       try {
-        const { error } = await supabase.from('breezeAccounts').delete().eq('id', accountIdToDelete);
-        if (error) throw error;
+        await deleteDoc(doc(db, 'breezeAccounts', accountIdToDelete.toString()));
       } catch (error) {
         console.error('Error deleting Breeze account:', error);
       }
@@ -344,7 +350,7 @@ const FileUploader: React.FC = () => {
       setBreezeAccounts(updatedAccounts);
       setFilteredAccounts(updatedAccounts);
       setDialogOpen(false);
-      await supabase.from('breezeAccounts').upsert(editAccount);
+      await setDoc(doc(db, 'breezeAccounts', editAccount.id.toString()), editAccount, { merge: true });
     } catch (error) {
       console.error('Error updating Breeze account:', error);
     }
@@ -352,9 +358,13 @@ const FileUploader: React.FC = () => {
 
   const handleLogin = async () => {
     try {
-      const { data, error } = await supabase.from('users').select('*').eq('username', username).eq('password', password);
-      if (error) throw error;
-      if (data.length > 0) {
+      const usersQuery = query(
+        collection(db, 'users'),
+        where('username', '==', username),
+        where('password', '==', password)
+      );
+      const querySnapshot = await getDocs(usersQuery);
+      if (!querySnapshot.empty) {
         setIsAuthenticated(true);
         setAuthDialogOpen(false);
         localStorage.setItem('isAuthenticated', 'true');
@@ -374,8 +384,8 @@ const FileUploader: React.FC = () => {
 
   const handleCreateAccount = async () => {
     try {
-      const { error } = await supabase.from('breezeAccounts').insert([{ id: newAccountId, zelleAccounts: [{ name: newAccountName }] }]);
-      if (error) throw error;
+      const account = { id: newAccountId, zelleAccounts: [{ name: newAccountName }] };
+      await setDoc(doc(db, 'breezeAccounts', newAccountId.toString()), account);
       await loadBreezeAccounts();
       setCreateDialogOpen(false);
       setNewAccountName('');
@@ -408,7 +418,11 @@ const FileUploader: React.FC = () => {
       setBreezeData(updatedBreezeData);
 
       try {
-        await supabase.from('breezeAccounts').upsert({ id: missingAccountId, zelleAccounts: [{ name: currentMissingAccount }] });
+        await setDoc(
+          doc(db, 'breezeAccounts', missingAccountId.toString()),
+          { id: missingAccountId, zelleAccounts: [{ name: currentMissingAccount }] },
+          { merge: true }
+        );
       } catch (error) {
         console.error('Error updating Breeze account:', error);
       }
