@@ -30,6 +30,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc, query, where } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'; // added
 import fuzzysort from 'fuzzysort';
 
 const drawerWidth = 240;
@@ -45,6 +46,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app); // added
 
 const FileUploader: React.FC = () => {
   const [status, setStatus] = useState<string>('No file uploaded.');
@@ -358,21 +360,13 @@ const FileUploader: React.FC = () => {
 
   const handleLogin = async () => {
     try {
-      const usersQuery = query(
-        collection(db, 'users'),
-        where('username', '==', username),
-        where('password', '==', password)
-      );
-      const querySnapshot = await getDocs(usersQuery);
-      if (!querySnapshot.empty) {
-        setIsAuthenticated(true);
-        setAuthDialogOpen(false);
-        localStorage.setItem('isAuthenticated', 'true');
-      } else {
-        alert('Invalid username or password');
-      }
+      await signInWithEmailAndPassword(auth, username, password);
+      setIsAuthenticated(true);
+      setAuthDialogOpen(false);
+      localStorage.setItem('isAuthenticated', 'true');
     } catch (error) {
       console.error('Error during authentication:', error);
+      alert('Invalid username or password');
     }
   };
 
