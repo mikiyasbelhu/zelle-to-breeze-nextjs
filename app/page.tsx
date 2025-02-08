@@ -30,7 +30,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc, query, where } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword } from 'firebase/auth'; // added
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'; // updated
 import fuzzysort from 'fuzzysort';
 
 const drawerWidth = 240;
@@ -65,7 +65,7 @@ const FileUploader: React.FC = () => {
   const [accountIdToDelete, setAccountIdToDelete] = useState<number | null>(null);
   const [showDownloadButton, setShowDownloadButton] = useState<boolean>(true);
   const [authDialogOpen, setAuthDialogOpen] = useState<boolean>(true);
-  const [username, setUsername] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [createDialogOpen, setCreateDialogOpen] = useState<boolean>(false);
@@ -77,6 +77,9 @@ const FileUploader: React.FC = () => {
   const [missingAccountDialogOpen, setMissingAccountDialogOpen] = useState<boolean>(false);
   const [breezeData, setBreezeData] = useState<any[]>([]);
   const [suggestedAccounts, setSuggestedAccounts] = useState<any[]>([]);
+  // New state for forgot password flow:
+  const [forgotPasswordDialogOpen, setForgotPasswordDialogOpen] = useState<boolean>(false);
+  const [resetEmail, setResetEmail] = useState<string>('');
 
   const theme = createTheme({
     palette: {
@@ -360,13 +363,13 @@ const FileUploader: React.FC = () => {
 
   const handleLogin = async () => {
     try {
-      await signInWithEmailAndPassword(auth, username, password);
+      await signInWithEmailAndPassword(auth, email, password);
       setIsAuthenticated(true);
       setAuthDialogOpen(false);
       localStorage.setItem('isAuthenticated', 'true');
     } catch (error) {
       console.error('Error during authentication:', error);
-      alert('Invalid username or password');
+      alert('Invalid email or password');
     }
   };
 
@@ -446,6 +449,17 @@ const FileUploader: React.FC = () => {
     setShowDownloadButton(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSendResetEmail = async () => {
+    try {
+      await sendPasswordResetEmail(auth, resetEmail);
+      alert('Password reset email sent.');
+      setForgotPasswordDialogOpen(false);
+    } catch (error) {
+      console.error('Error sending reset email:', error);
+      alert('Error sending reset email.');
     }
   };
 
@@ -645,9 +659,9 @@ const FileUploader: React.FC = () => {
             <DialogTitle>Login</DialogTitle>
             <DialogContent>
               <TextField
-                  label="Username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  label="Email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   fullWidth
                   margin="normal"
               />
@@ -659,6 +673,9 @@ const FileUploader: React.FC = () => {
                   fullWidth
                   margin="normal"
               />
+              <Button onClick={() => setForgotPasswordDialogOpen(true)} sx={{ mt: 1 }}>
+                Forgot Password?
+              </Button>
             </DialogContent>
             <DialogActions>
               <Button onClick={handleLogin} variant="contained">
@@ -666,6 +683,27 @@ const FileUploader: React.FC = () => {
               </Button>
             </DialogActions>
           </Dialog>
+
+          {/* New Forgot Password Dialog */}
+          <Dialog open={forgotPasswordDialogOpen} onClose={() => setForgotPasswordDialogOpen(false)}>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogContent>
+              <TextField
+                  label="Enter your email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  fullWidth
+                  margin="normal"
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setForgotPasswordDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleSendResetEmail} variant="contained">
+                Send Reset Email
+              </Button>
+            </DialogActions>
+          </Dialog>
+
           <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
             <DialogTitle>Create New Account</DialogTitle>
             <DialogContent>
