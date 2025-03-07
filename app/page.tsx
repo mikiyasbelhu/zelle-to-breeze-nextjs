@@ -132,23 +132,29 @@ const FileUploader: React.FC = () => {
 
       // Check if the first row is a header
       const firstRow = zelleData[0];
-      const hasHeader = (firstRow as string[]).includes('Description') || (firstRow as string[]).includes('Posting Date') || (firstRow as string[]).includes('Amount');
+      const hasHeader =
+        (firstRow as string[]).includes('Description') ||
+        (firstRow as string[]).includes('Posting Date') ||
+        (firstRow as string[]).includes('Amount');
 
       const dataRows = hasHeader ? zelleData.slice(1) : zelleData;
-      const missingAccounts: string[] = [];
+      const missingAccountsSet = new Set<string>();
 
-      const breezeData = dataRows
-        .filter((row: any) => row.some((cell: any) => cell !== undefined && cell !== null && cell !== '')) // Skip empty lines
+      const mappedBreezeData = dataRows
+        .filter((row: any) => row.some((cell: any) => cell !== undefined && cell !== null && cell !== ''))
         .map((row: any) => {
           const description = row[2] || '';
           const nameParts = extractName(description);
           const fullName = `${nameParts.firstName} ${nameParts.lastName}`.trim();
           let breezeId = getBreezeId(fullName);
           if (!breezeId) {
-            missingAccounts.push(fullName);
+            missingAccountsSet.add(fullName);
           }
 
-          const date = typeof row[1] === 'string' ? row[1] : row[1].toLocaleDateString('en-US');
+          const date =
+            typeof row[1] === 'string'
+              ? row[1]
+              : row[1].toLocaleDateString('en-US');
 
           return {
             "Breeze ID": breezeId || 'MISSING',
@@ -165,15 +171,16 @@ const FileUploader: React.FC = () => {
           };
         });
 
-      setBreezeData(breezeData);
+      setBreezeData(mappedBreezeData);
 
-      if (missingAccounts.length > 0) {
-        setMissingAccounts(missingAccounts);
-        setCurrentMissingAccount(missingAccounts[0]);
-        await fetchSuggestedAccounts(missingAccounts[0]);
+      const uniqueMissingAccounts = Array.from(missingAccountsSet);
+      if (uniqueMissingAccounts.length > 0) {
+        setMissingAccounts(uniqueMissingAccounts);
+        setCurrentMissingAccount(uniqueMissingAccounts[0]);
+        await fetchSuggestedAccounts(uniqueMissingAccounts[0]);
         setMissingAccountDialogOpen(true);
       } else {
-        const newSheet = XLSX.utils.json_to_sheet(breezeData);
+        const newSheet = XLSX.utils.json_to_sheet(mappedBreezeData);
         const csvOutput = XLSX.utils.sheet_to_csv(newSheet);
         const fileBlob = new Blob([csvOutput], { type: 'text/csv' });
         setConvertedFile(fileBlob);
