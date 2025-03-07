@@ -564,7 +564,12 @@ const FileUploader: React.FC = () => {
                     field: 'zelleAccounts',
                     headerName: 'Zelle Accounts',
                     flex: 2,
-                    renderCell: (params) => params.value.map((zelle: any) => zelle.name).join(', '),
+                    valueGetter: (params) => 
+                      params.row.zelleAccounts
+                        ? params.row.zelleAccounts.map((zelle: any) => zelle.name).join(', ')
+                        : '',
+                    renderCell: (params) => params.value,
+                    sortComparator: (v1: string, v2: string) => v1.localeCompare(v2),
                   },
                   {
                     field: 'actions',
