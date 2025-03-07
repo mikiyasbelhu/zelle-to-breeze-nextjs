@@ -402,11 +402,26 @@ const FileUploader: React.FC = () => {
     if (missingAccountId && currentMissingAccount) {
       const updatedAccounts = [...breezeAccounts];
       const existingAccount = updatedAccounts.find((account) => account.id === missingAccountId);
+      
       if (existingAccount) {
-        existingAccount.zelleAccounts.push({ name: currentMissingAccount });
+        // Check if name already exists to avoid duplicates
+        const nameExists = existingAccount.zelleAccounts.some(
+          (zelle: any) => zelle.name.toLowerCase() === currentMissingAccount.toLowerCase()
+        );
+        
+        if (!nameExists) {
+          existingAccount.zelleAccounts = [
+            ...existingAccount.zelleAccounts,
+            { name: currentMissingAccount }
+          ];
+        }
       } else {
-        updatedAccounts.push({ id: missingAccountId, zelleAccounts: [{ name: currentMissingAccount }] });
+        updatedAccounts.push({ 
+          id: missingAccountId, 
+          zelleAccounts: [{ name: currentMissingAccount }] 
+        });
       }
+      
       setBreezeAccounts(updatedAccounts);
       setFilteredAccounts(updatedAccounts);
 
@@ -420,9 +435,11 @@ const FileUploader: React.FC = () => {
       setBreezeData(updatedBreezeData);
 
       try {
+        // When saving to Firestore, save the complete zelleAccounts array
+        const accountToSave = updatedAccounts.find(acc => acc.id === missingAccountId);
         await setDoc(
           doc(db, 'breezeAccounts', missingAccountId.toString()),
-          { id: missingAccountId, zelleAccounts: [{ name: currentMissingAccount }] },
+          accountToSave,
           { merge: true }
         );
       } catch (error) {
