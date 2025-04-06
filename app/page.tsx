@@ -199,18 +199,32 @@ const FileUploader: React.FC = () => {
       const breezeSnapshot = await getDocs(breezeCol);
       const data = breezeSnapshot.docs.map(docSnap => ({ id: parseInt(docSnap.id), ...docSnap.data() }));
 
-      const searchableList = breezeAccounts.flatMap((data) =>
-        data.zelleAccounts.map((zelleAccount: { name: string }) => ({
-          id: data.id,
-          name: zelleAccount.name,
-        }))
-      );
-    
-      // Perform the fuzzy search
-      const results = fuzzysort.go(name, searchableList, { key: 'name' });
-      const filteredIds = results.map((result: any) => result.obj.id);
-      const matchedAccounts = data.filter((account: any) => filteredIds.includes(account.id));
+      const searchableList = breezeAccounts.flatMap((acc) =>
+        acc.zelleAccounts.map((zelleAccount: { name: string }) => {
+          const originalName = zelleAccount.name;
+          const parts = originalName.split(' ');
+          const firstLastName = parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1]}` : originalName;
+          return [
+            { id: acc.id, name: originalName },
+            { id: acc.id, name: firstLastName }
+          ];
+        })
+      ).flat();
 
+      // Create a simplified query from the input: only first and last names.
+      const queryParts = name.split(' ').filter(part => part);
+      const simplifiedQuery = queryParts.length >= 2 ? `${queryParts[0]} ${queryParts[queryParts.length - 1]}` : name;
+
+      // Perform fuzzy search using both the original and simplified queries.
+      const resultsOriginal = fuzzysort.go(name, searchableList, { key: 'name' });
+      const resultsSimplified = fuzzysort.go(simplifiedQuery, searchableList, { key: 'name' });
+
+      // Combine the two result sets and deduplicate by account ID.
+      const combinedIds = new Set<number>();
+      resultsOriginal.forEach(result => combinedIds.add(result.obj.id));
+      resultsSimplified.forEach(result => combinedIds.add(result.obj.id));
+
+      const matchedAccounts = data.filter((account: any) => combinedIds.has(account.id));
       setSuggestedAccounts(matchedAccounts);
     } catch (error) {
       console.error('Error fetching suggested accounts:', error);
