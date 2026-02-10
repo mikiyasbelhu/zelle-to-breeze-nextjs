@@ -22,12 +22,15 @@ import {
   Switch,
   createTheme,
   ThemeProvider,
+  Menu,
+  MenuItem,
 } from '@mui/material';
 import { DataGrid, GridPaginationModel } from '@mui/x-data-grid';
 import SearchIcon from '@mui/icons-material/Search';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc, query, where } from 'firebase/firestore';
 import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'; // updated
@@ -80,6 +83,8 @@ const FileUploader: React.FC = () => {
   // New state for forgot password flow:
   const [forgotPasswordDialogOpen, setForgotPasswordDialogOpen] = useState<boolean>(false);
   const [resetEmail, setResetEmail] = useState<string>('');
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const menuOpen = Boolean(anchorEl);
 
   const theme = createTheme({
     palette: {
@@ -506,6 +511,23 @@ const FileUploader: React.FC = () => {
     }
   };
 
+  const exportBreezeAccounts = async () => {
+    const data = breezeAccounts.map(account => ({
+      id: account.id,
+      zelleAccounts: account.zelleAccounts.map(zelleAccount => zelleAccount.name)
+    }));
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'breeze_accounts.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const renderContent = () => {
     if (activePage === 'export') {
       return (
@@ -543,14 +565,29 @@ const FileUploader: React.FC = () => {
       return (
           <Box sx={{ p: 3 }}>
             <Typography variant="h6">Breeze Accounts</Typography>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2, gap: 1 }}>
               <Button variant="contained" onClick={() => setCreateDialogOpen(true)}>
-                Create New Account
+                Create Account
               </Button>
-              <Button variant="contained" component="label" sx={{ ml: 2 }}>
-                Bulk Upload Breeze Accounts
-                <input type="file" hidden accept=".csv" onChange={handleBulkUpload} />
-              </Button>
+              <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
+                <MoreVertIcon />
+              </IconButton>
+              <Menu
+                  anchorEl={anchorEl}
+                  open={menuOpen}
+                  onClose={() => setAnchorEl(null)}
+              >
+                <MenuItem component="label">
+                  Bulk Upload
+                  <input type="file" hidden accept=".csv" onChange={handleBulkUpload} />
+                </MenuItem>
+                <MenuItem onClick={() => {
+                  exportBreezeAccounts();
+                  setAnchorEl(null);
+                }}>
+                  Bulk Export
+                </MenuItem>
+              </Menu>
             </Box>
             <TextField
                 label="Search by ID or Name"
