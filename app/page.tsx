@@ -2,7 +2,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { CssBaseline, Box, ThemeProvider } from '@mui/material';
+import { CssBaseline, Box, ThemeProvider, LinearProgress, Typography, Backdrop } from '@mui/material';
 import { GridPaginationModel } from '@mui/x-data-grid';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
@@ -63,6 +63,7 @@ const FileUploader: React.FC = () => {
   const [suggestedAccounts, setSuggestedAccounts] = useState<any[]>([]);
   const [forgotPasswordDialogOpen, setForgotPasswordDialogOpen] = useState<boolean>(false);
   const [resetEmail, setResetEmail] = useState<string>('');
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const theme = getTheme(darkMode);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,6 +75,7 @@ const FileUploader: React.FC = () => {
 
   const loadBreezeAccounts = async () => {
     try {
+      setIsLoading(true);
       const breezeCol = collection(db, 'breezeAccounts');
       const breezeSnapshot = await getDocs(breezeCol);
       const data = breezeSnapshot.docs.map(docSnap => ({ id: parseInt(docSnap.id), ...docSnap.data() }));
@@ -83,6 +85,8 @@ const FileUploader: React.FC = () => {
       console.error('Error loading Breeze accounts:', error);
       setBreezeAccounts([]);
       setFilteredAccounts([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -388,6 +392,62 @@ const FileUploader: React.FC = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
+      {isLoading && (
+        <LinearProgress
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1300,
+            height: 3,
+            background: 'linear-gradient(90deg, #3b82f6, #06b6d4, #3b82f6)',
+            backgroundSize: '200% 100%',
+            animation: 'glow 2s ease-in-out infinite',
+            '@keyframes glow': {
+              '0%': { backgroundPosition: '0% center', boxShadow: '0 0 10px rgba(59, 130, 246, 0.5)' },
+              '50%': { backgroundPosition: '100% center', boxShadow: '0 0 20px rgba(6, 182, 212, 0.8)' },
+              '100%': { backgroundPosition: '0% center', boxShadow: '0 0 10px rgba(59, 130, 246, 0.5)' },
+            },
+            '& .MuiLinearProgress-bar': {
+              display: 'none',
+            },
+          }}
+        />
+      )}
+      <Backdrop
+        open={isLoading}
+        sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 1299,
+          background: 'rgba(0, 0, 0, 0.4)',
+          backdropFilter: 'blur(2px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography
+            variant="h4"
+            sx={{
+              color: 'white',
+              fontWeight: 700,
+              animation: 'pulse 2s ease-in-out infinite',
+              '@keyframes pulse': {
+                '0%, 100%': { opacity: 0.6 },
+                '50%': { opacity: 1 },
+              },
+            }}
+          >
+            Loading...
+          </Typography>
+        </Box>
+      </Backdrop>
       <Box sx={{ display: 'flex', minHeight: '100vh', background: 'var(--background)' }}>
         <Sidebar
           activePage={activePage} setActivePage={setActivePage}
