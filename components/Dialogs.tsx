@@ -93,10 +93,11 @@ interface CreateDialogProps {
     newAccountName: string;
     setNewAccountName: (v: string) => void;
     onSave: () => void;
+    errorMessage?: string;
 }
 
 export const CreateDialog: React.FC<CreateDialogProps> = ({
-    open, onClose, newAccountId, setNewAccountId, newAccountName, setNewAccountName, onSave,
+    open, onClose, newAccountId, setNewAccountId, newAccountName, setNewAccountName, onSave, errorMessage,
 }) => (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontWeight: 700 }}>
@@ -105,7 +106,16 @@ export const CreateDialog: React.FC<CreateDialogProps> = ({
         </DialogTitle>
         <DialogContent>
             <Box sx={{ pt: 1 }}>
-                <TextField label="Account ID" type="number" value={newAccountId || ''} onChange={(e) => setNewAccountId(parseInt(e.target.value, 10))} fullWidth margin="normal" />
+                <TextField
+                    label="Account ID"
+                    type="number"
+                    value={newAccountId || ''}
+                    onChange={(e) => setNewAccountId(parseInt(e.target.value, 10))}
+                    error={Boolean(errorMessage)}
+                    helperText={errorMessage || ' '}
+                    fullWidth
+                    margin="normal"
+                />
                 <TextField label="Account Name" value={newAccountName} onChange={(e) => setNewAccountName(e.target.value)} fullWidth margin="normal" />
             </Box>
         </DialogContent>

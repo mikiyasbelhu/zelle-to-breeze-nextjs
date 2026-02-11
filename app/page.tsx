@@ -64,6 +64,7 @@ const FileUploader: React.FC = () => {
   const [forgotPasswordDialogOpen, setForgotPasswordDialogOpen] = useState<boolean>(false);
   const [resetEmail, setResetEmail] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [createDialogError, setCreateDialogError] = useState<string>('');
 
   const theme = getTheme(darkMode);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -292,6 +293,11 @@ const FileUploader: React.FC = () => {
 
   const handleCreateAccount = async () => {
     if (newAccountId === null) { alert("Please enter a valid Account ID"); return; }
+    const exists = breezeAccounts.some((account) => account.id === newAccountId);
+    if (exists) {
+      setCreateDialogError('Duplicate Breeze ID. Please use a unique ID.');
+      return;
+    }
     try {
       const account = { id: newAccountId, zelleAccounts: [{ name: newAccountName }] };
       await setDoc(doc(db, 'breezeAccounts', newAccountId.toString()), account);
@@ -299,6 +305,7 @@ const FileUploader: React.FC = () => {
       setCreateDialogOpen(false);
       setNewAccountName('');
       setNewAccountId(null);
+      setCreateDialogError('');
     } catch (error) { console.error('Error creating Breeze account:', error); setCreateDialogOpen(false); }
   };
 
@@ -511,7 +518,10 @@ const FileUploader: React.FC = () => {
               searchQuery={searchQuery} setSearchQuery={setSearchQuery}
               paginationModel={paginationModel} setPaginationModel={setPaginationModel}
               onEdit={handleEdit} onDelete={handleDelete}
-              onCreateAccount={() => setCreateDialogOpen(true)}
+              onCreateAccount={() => {
+                setCreateDialogError('');
+                setCreateDialogOpen(true);
+              }}
               onBulkUpload={handleBulkUpload}
               onBulkExport={exportBreezeAccounts}
             />
@@ -521,7 +531,7 @@ const FileUploader: React.FC = () => {
         {/* All Dialogs */}
         <EditDialog open={dialogOpen} onClose={() => setDialogOpen(false)} editAccount={editAccount} setEditAccount={setEditAccount} onSave={handleEditSave} />
         <DeleteDialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} onConfirm={confirmDelete} />
-        <CreateDialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} newAccountId={newAccountId} setNewAccountId={setNewAccountId} newAccountName={newAccountName} setNewAccountName={setNewAccountName} onSave={handleCreateAccount} />
+        <CreateDialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} newAccountId={newAccountId} setNewAccountId={setNewAccountId} newAccountName={newAccountName} setNewAccountName={setNewAccountName} onSave={handleCreateAccount} errorMessage={createDialogError} />
         <ForgotPasswordDialog open={forgotPasswordDialogOpen} onClose={() => setForgotPasswordDialogOpen(false)} resetEmail={resetEmail} setResetEmail={setResetEmail} onSend={handleSendResetEmail} />
         <MissingAccountDialog open={missingAccountDialogOpen} currentMissingAccount={currentMissingAccount} missingAccountId={missingAccountId} setMissingAccountId={setMissingAccountId} suggestedAccounts={suggestedAccounts} onSave={handleMissingAccountSave} onCancel={handleCancelImport} />
       </Box>
