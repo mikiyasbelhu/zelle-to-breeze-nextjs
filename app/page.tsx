@@ -431,7 +431,36 @@ const FileUploader: React.FC = () => {
           justifyContent: 'center',
         }}
       >
-        <Box sx={{ textAlign: 'center' }}>
+        <Box
+          sx={{
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <Box
+            component="img"
+            src="/eebc-logo.png"
+            alt="EEBC Logo"
+            sx={{
+              width: { xs: 140, sm: 160, md: 180 },
+              height: 'auto',
+              animation: 'logoGlow 2s ease-in-out infinite',
+              filter: 'drop-shadow(0 0 12px rgba(59, 130, 246, 0.65))',
+              '@keyframes logoGlow': {
+                '0%, 100%': {
+                  filter: 'drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))',
+                  transform: 'scale(1)',
+                },
+                '50%': {
+                  filter: 'drop-shadow(0 0 18px rgba(6, 182, 212, 0.9))',
+                  transform: 'scale(1.03)',
+                },
+              },
+            }}
+          />
           <Typography
             variant="h4"
             sx={{
