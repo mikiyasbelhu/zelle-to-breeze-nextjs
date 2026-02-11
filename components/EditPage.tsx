@@ -90,7 +90,7 @@ const EditPage: React.FC<EditPageProps> = ({
                 <Box className="card" sx={{ px: 3, py: 2, display: 'flex', alignItems: 'center', gap: 2, flex: 1 }}>
                     <Box sx={{
                         width: 40, height: 40, borderRadius: '12px',
-                        background: 'linear-gradient(135deg, rgba(99,102,241,0.1) 0%, rgba(139,92,246,0.1) 100%)',
+                        background: 'linear-gradient(135deg, rgba(59,130,246,0.1) 0%, rgba(37,99,235,0.1) 100%)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                         <PeopleAltIcon sx={{ color: 'var(--primary-500)', fontSize: 20 }} />
@@ -173,10 +173,10 @@ const EditPage: React.FC<EditPageProps> = ({
                                         size="small"
                                         onClick={() => onEdit(params.row)}
                                         sx={{
-                                            color: '#6366f1 !important',
+                                            color: '#3b82f6 !important',
                                             borderRadius: '10px',
-                                            background: 'rgba(99, 102, 241, 0.08)',
-                                            '&:hover': { background: 'rgba(99, 102, 241, 0.18)' },
+                                            background: 'rgba(59, 130, 246, 0.08)',
+                                            '&:hover': { background: 'rgba(59, 130, 246, 0.18)' },
                                         }}
                                     >
                                         <EditIcon sx={{ fontSize: 18 }} />

@@ -34,7 +34,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 40%, #312e81 70%, #4338ca 100%)',
+                background: 'linear-gradient(135deg, #0a1628 0%, #0f2b5e 40%, #1e40af 70%, #2563eb 100%)',
                 position: 'relative',
                 overflow: 'hidden',
             }}
@@ -42,7 +42,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             {/* Decorative orbs */}
             <Box sx={{
                 position: 'absolute', width: 400, height: 400, borderRadius: '50%',
-                background: 'radial-gradient(circle, rgba(99,102,241,0.3) 0%, transparent 70%)',
+                background: 'radial-gradient(circle, rgba(59,130,246,0.3) 0%, transparent 70%)',
                 top: -100, right: -100, filter: 'blur(40px)',
             }} />
             <Box sx={{
@@ -52,7 +52,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
             }} />
             <Box sx={{
                 position: 'absolute', width: 200, height: 200, borderRadius: '50%',
-                background: 'radial-gradient(circle, rgba(139,92,246,0.2) 0%, transparent 70%)',
+                background: 'radial-gradient(circle, rgba(37,99,235,0.2) 0%, transparent 70%)',
                 top: '50%', left: '30%', filter: 'blur(30px)',
             }} />
 
@@ -115,10 +115,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                             color: '#fff',
                             '& fieldset': { borderColor: 'rgba(255,255,255,0.15)' },
                             '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.3)' },
-                            '&.Mui-focused fieldset': { borderColor: '#818cf8' },
+                            '&.Mui-focused fieldset': { borderColor: '#60a5fa' },
                         },
                         '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.5)' },
-                        '& .MuiInputLabel-root.Mui-focused': { color: '#818cf8' },
+                        '& .MuiInputLabel-root.Mui-focused': { color: '#60a5fa' },
                     }}
                 />
 
@@ -161,8 +161,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     <Button
                         onClick={onForgotPassword}
                         sx={{
-                            color: '#a5b4fc', textTransform: 'none', fontSize: '0.85rem',
-                            '&:hover': { color: '#c7d2fe', background: 'transparent' },
+                            color: '#93c5fd', textTransform: 'none', fontSize: '0.85rem',
+                            '&:hover': { color: '#bfdbfe', background: 'transparent' },
                         }}
                     >
                         Forgot password?
@@ -177,10 +177,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({
                     sx={{
                         py: 1.5,
                         fontSize: '1rem',
-                        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                        background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
                         '&:hover': {
-                            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-                            boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
+                            background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
+                            boxShadow: '0 8px 24px rgba(59, 130, 246, 0.4)',
                             transform: 'translateY(-1px)',
                         },
                         transition: 'all 0.2s ease',

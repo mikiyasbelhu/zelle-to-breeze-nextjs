@@ -34,8 +34,8 @@ const Sidebar: React.FC<SidebarProps> = ({
                 display: 'flex',
                 flexDirection: 'column',
                 background: darkMode
-                    ? 'linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%)'
-                    : 'linear-gradient(180deg, #312e81 0%, #4338ca 50%, #6366f1 100%)',
+                    ? 'linear-gradient(180deg, #0a1628 0%, #0f2b5e 100%)'
+                    : 'linear-gradient(180deg, #0f2b5e 0%, #1e40af 50%, #3b82f6 100%)',
                 color: '#fff',
                 position: 'fixed',
                 left: 0,

@@ -5,9 +5,9 @@ export const getTheme = (darkMode: boolean) =>
         palette: {
             mode: darkMode ? 'dark' : 'light',
             primary: {
-                main: '#6366f1',
-                light: '#818cf8',
-                dark: '#4f46e5',
+                main: '#3b82f6',
+                light: '#60a5fa',
+                dark: '#2563eb',
             },
             secondary: {
                 main: '#14b8a6',
@@ -50,10 +50,10 @@ export const getTheme = (darkMode: boolean) =>
                         '&:hover': { boxShadow: 'none' },
                     },
                     contained: {
-                        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+                        background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)',
                         '&:hover': {
-                            background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
-                            boxShadow: '0 4px 16px rgba(99, 102, 241, 0.35)',
+                            background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)',
+                            boxShadow: '0 4px 16px rgba(59, 130, 246, 0.35)',
                             transform: 'translateY(-1px)',
                         },
                     },
