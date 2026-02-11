@@ -2,41 +2,22 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Drawer,
-  List,
-  ListItem,
-  ListItemText,
-  CssBaseline,
-  Box,
-  Button,
-  TextField,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  IconButton,
-  Switch,
-  createTheme,
-  ThemeProvider,
-  Menu,
-  MenuItem,
-} from '@mui/material';
-import { DataGrid, GridPaginationModel } from '@mui/x-data-grid';
-import SearchIcon from '@mui/icons-material/Search';
-import DeleteIcon from '@mui/icons-material/Delete';
-import EditIcon from '@mui/icons-material/Edit';
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
+import { CssBaseline, Box, ThemeProvider } from '@mui/material';
+import { GridPaginationModel } from '@mui/x-data-grid';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc, query, where } from 'firebase/firestore';
-import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'; // updated
+import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import fuzzysort from 'fuzzysort';
 
-const drawerWidth = 240;
+import { getTheme } from '@/components/ui/theme';
+import LoginScreen from '@/components/LoginScreen';
+import Sidebar from '@/components/Sidebar';
+import ExportPage from '@/components/ExportPage';
+import EditPage from '@/components/EditPage';
+import {
+  EditDialog, DeleteDialog, CreateDialog,
+  ForgotPasswordDialog, MissingAccountDialog,
+} from '@/components/Dialogs';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -49,11 +30,11 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app); // added
+const auth = getAuth(app);
 
 const FileUploader: React.FC = () => {
   const [status, setStatus] = useState<string>('No file uploaded.');
-  const [batchNumber, setBatchNumber] = useState<string>('100');
+  const [batchNumber, setBatchNumber] = useState<string>(() => String(Math.floor(Math.random() * 900) + 100));
   const [batchName, setBatchName] = useState<string>('Zelle Import');
   const [convertedFile, setConvertedFile] = useState<Blob | null>(null);
   const [breezeAccounts, setBreezeAccounts] = useState<any[]>([]);
@@ -80,19 +61,16 @@ const FileUploader: React.FC = () => {
   const [missingAccountDialogOpen, setMissingAccountDialogOpen] = useState<boolean>(false);
   const [breezeData, setBreezeData] = useState<any[]>([]);
   const [suggestedAccounts, setSuggestedAccounts] = useState<any[]>([]);
-  // New state for forgot password flow:
   const [forgotPasswordDialogOpen, setForgotPasswordDialogOpen] = useState<boolean>(false);
   const [resetEmail, setResetEmail] = useState<string>('');
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const menuOpen = Boolean(anchorEl);
 
-  const theme = createTheme({
-    palette: {
-      mode: darkMode ? 'dark' : 'light',
-    },
-  });
-
+  const theme = getTheme(darkMode);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Apply dark mode attribute to html
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   const loadBreezeAccounts = async () => {
     try {
@@ -109,9 +87,7 @@ const FileUploader: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
-      loadBreezeAccounts();
-    }
+    if (isAuthenticated) loadBreezeAccounts();
   }, [isAuthenticated]);
 
   useEffect(() => {
@@ -122,29 +98,68 @@ const FileUploader: React.FC = () => {
     }
   }, []);
 
+  const extractName = (description: string): { firstName: string; lastName: string } => {
+    if (!description.startsWith('Zelle payment from ')) return { firstName: '', lastName: '' };
+    const trimmedDescription = description.replace('Zelle payment from ', '').trim();
+    const words = trimmedDescription.split(' ');
+    const lastWord = words.pop();
+    const firstName = words.shift() || '';
+    return { firstName, lastName: words.join(' ') };
+  };
+
+  const getBreezeId = (name: string): number => {
+    const normalizedName = name.toLowerCase().replace(/\s+/g, ' ').trim();
+    for (const account of breezeAccounts) {
+      if (account.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase().replace(/\s+/g, ' ').trim() === normalizedName)) {
+        return account.id;
+      }
+    }
+    return 0;
+  };
+
+  const fetchSuggestedAccounts = async (name: string) => {
+    try {
+      const breezeCol = collection(db, 'breezeAccounts');
+      const breezeSnapshot = await getDocs(breezeCol);
+      const data = breezeSnapshot.docs.map(docSnap => ({ id: parseInt(docSnap.id), ...docSnap.data() }));
+      const searchableList = breezeAccounts.flatMap((acc) =>
+        acc.zelleAccounts.map((zelleAccount: { name: string }) => {
+          const originalName = zelleAccount.name;
+          const parts = originalName.split(' ');
+          const firstLastName = parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1]}` : originalName;
+          return [
+            { id: acc.id, name: originalName },
+            { id: acc.id, name: firstLastName }
+          ];
+        })
+      ).flat();
+      const queryParts = name.split(' ').filter(part => part);
+      const simplifiedQuery = queryParts.length >= 2 ? `${queryParts[0]} ${queryParts[queryParts.length - 1]}` : name;
+      const resultsOriginal = fuzzysort.go(name, searchableList, { key: 'name' });
+      const resultsSimplified = fuzzysort.go(simplifiedQuery, searchableList, { key: 'name' });
+      const combinedIds = new Set<number>();
+      resultsOriginal.forEach(result => combinedIds.add(result.obj.id));
+      resultsSimplified.forEach(result => combinedIds.add(result.obj.id));
+      const matchedAccounts = data.filter((account: any) => combinedIds.has(account.id));
+      setSuggestedAccounts(matchedAccounts);
+    } catch (error) {
+      console.error('Error fetching suggested accounts:', error);
+      setSuggestedAccounts([]);
+    }
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) {
-      setStatus('No file selected.');
-      return;
-    }
-
+    if (!file) { setStatus('No file selected.'); return; }
     try {
       const text = await file.text();
       const csvData = XLSX.read(text, { type: 'string', cellDates: true });
       const zelleSheet = csvData.Sheets[csvData.SheetNames[0]];
       const zelleData = XLSX.utils.sheet_to_json(zelleSheet, { header: 1 });
-
-      // Check if the first row is a header
       const firstRow = zelleData[0];
-      const hasHeader =
-        (firstRow as string[]).includes('Description') ||
-        (firstRow as string[]).includes('Posting Date') ||
-        (firstRow as string[]).includes('Amount');
-
+      const hasHeader = (firstRow as string[]).includes('Description') || (firstRow as string[]).includes('Posting Date') || (firstRow as string[]).includes('Amount');
       const dataRows = hasHeader ? zelleData.slice(1) : zelleData;
       const missingAccountsSet = new Set<string>();
-
       const mappedBreezeData = dataRows
         .filter((row: any) => row.some((cell: any) => cell !== undefined && cell !== null && cell !== ''))
         .map((row: any) => {
@@ -152,32 +167,16 @@ const FileUploader: React.FC = () => {
           const nameParts = extractName(description);
           const fullName = `${nameParts.firstName} ${nameParts.lastName}`.trim();
           let breezeId = getBreezeId(fullName);
-          if (!breezeId) {
-            missingAccountsSet.add(fullName);
-          }
-
-          const date =
-            typeof row[1] === 'string'
-              ? row[1]
-              : row[1].toLocaleDateString('en-US');
-
+          if (!breezeId) missingAccountsSet.add(fullName);
+          const date = typeof row[1] === 'string' ? row[1] : row[1].toLocaleDateString('en-US');
           return {
-            "Breeze ID": breezeId || 'MISSING',
-            "First Name": nameParts.firstName,
-            "Last Name": nameParts.lastName,
-            Date: date,
-            Amount: row[3],
-            Fund: 'Tithe',
-            Method: 'Zelle',
-            "Batch Number": batchNumber,
-            "Batch Name": batchName,
-            "Check Number": '',
-            Note: '',
+            "Breeze ID": breezeId || 'MISSING', "First Name": nameParts.firstName,
+            "Last Name": nameParts.lastName, Date: date, Amount: row[3], Fund: 'Tithe',
+            Method: 'Zelle', "Batch Number": batchNumber, "Batch Name": batchName,
+            "Check Number": '', Note: '',
           };
         });
-
       setBreezeData(mappedBreezeData);
-
       const uniqueMissingAccounts = Array.from(missingAccountsSet);
       if (uniqueMissingAccounts.length > 0) {
         setMissingAccounts(uniqueMissingAccounts);
@@ -198,66 +197,18 @@ const FileUploader: React.FC = () => {
     }
   };
 
-  const fetchSuggestedAccounts = async (name: string) => {
-    try {
-      const breezeCol = collection(db, 'breezeAccounts');
-      const breezeSnapshot = await getDocs(breezeCol);
-      const data = breezeSnapshot.docs.map(docSnap => ({ id: parseInt(docSnap.id), ...docSnap.data() }));
-
-      const searchableList = breezeAccounts.flatMap((acc) =>
-        acc.zelleAccounts.map((zelleAccount: { name: string }) => {
-          const originalName = zelleAccount.name;
-          const parts = originalName.split(' ');
-          const firstLastName = parts.length >= 2 ? `${parts[0]} ${parts[parts.length - 1]}` : originalName;
-          return [
-            { id: acc.id, name: originalName },
-            { id: acc.id, name: firstLastName }
-          ];
-        })
-      ).flat();
-
-      // Create a simplified query from the input: only first and last names.
-      const queryParts = name.split(' ').filter(part => part);
-      const simplifiedQuery = queryParts.length >= 2 ? `${queryParts[0]} ${queryParts[queryParts.length - 1]}` : name;
-
-      // Perform fuzzy search using both the original and simplified queries.
-      const resultsOriginal = fuzzysort.go(name, searchableList, { key: 'name' });
-      const resultsSimplified = fuzzysort.go(simplifiedQuery, searchableList, { key: 'name' });
-
-      // Combine the two result sets and deduplicate by account ID.
-      const combinedIds = new Set<number>();
-      resultsOriginal.forEach(result => combinedIds.add(result.obj.id));
-      resultsSimplified.forEach(result => combinedIds.add(result.obj.id));
-
-      const matchedAccounts = data.filter((account: any) => combinedIds.has(account.id));
-      setSuggestedAccounts(matchedAccounts);
-    } catch (error) {
-      console.error('Error fetching suggested accounts:', error);
-      setSuggestedAccounts([]);
-    }
-  };
-
   const handleBulkUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) {
-      setStatus('No file selected.');
-      return;
-    }
-
+    if (!file) { setStatus('No file selected.'); return; }
     try {
       const text = await file.text();
       const csvData = XLSX.read(text, { type: 'string' });
       const sheet = csvData.Sheets[csvData.SheetNames[0]];
       const bulkData = XLSX.utils.sheet_to_json(sheet);
-
       await Promise.all(bulkData.map(async (row: any) => {
-        const account = {
-          id: row['Breeze ID'],
-          zelleAccounts: [{ name: `${row['First Name']} ${row['Last Name']}`.trim() }],
-        };
+        const account = { id: row['Breeze ID'], zelleAccounts: [{ name: `${row['First Name']} ${row['Last Name']}`.trim() }] };
         await setDoc(doc(db, 'breezeAccounts', account.id.toString()), account, { merge: true });
       }));
-
       await loadBreezeAccounts();
       setStatus('Bulk upload successful!');
     } catch (error) {
@@ -266,58 +217,12 @@ const FileUploader: React.FC = () => {
     }
   };
 
-  const getBreezeId = (name: string): number => {
-    const normalizedName = name.toLowerCase().replace(/\s+/g, ' ').trim();
-    for (const account of breezeAccounts) {
-      if (account.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase().replace(/\s+/g, ' ').trim() === normalizedName)) {
-        return account.id;
-      }
-    }
-    return 0;
-  };
-
-  const extractName = (description: string): { firstName: string; lastName: string } => {
-    if (!description.startsWith('Zelle payment from ')) {
-      return { firstName: '', lastName: '' };
-    }
-    const trimmedDescription = description.replace('Zelle payment from ', '').trim();
-    const words = trimmedDescription.split(' ');
-    const lastWord = words.pop();
-    const firstName = words.shift() || '';
-    return { firstName, lastName: words.join(' ') };
-  };
-
-  const handleMissingAccounts = async (missingAccounts: string[], breezeData: any[]): Promise<any[]> => {
-    const updatedAccounts = [...breezeAccounts];
-    for (const name of missingAccounts) {
-      const id = parseInt(prompt(`Please provide Breeze ID for ${name}:`) || '0', 10);
-      if (id) {
-        const existingAccount = updatedAccounts.find((account) => account.id === id);
-        if (existingAccount) {
-          existingAccount.zelleAccounts.push({ name });
-        } else {
-          updatedAccounts.push({ id, zelleAccounts: [{ name }] });
-        }
-        // Update the breezeData with the new ID
-        breezeData.forEach((entry: any) => {
-          if (`${entry["First Name"]} ${entry["Last Name"]}`.trim() === name) {
-            entry["Breeze ID"] = id;
-          }
-        });
-      }
-    }
-    return updatedAccounts;
-  };
-
   const saveBreezeAccounts = async (accounts: any[]) => {
     try {
       await Promise.all(accounts.map(async (account) => {
         await setDoc(doc(db, 'breezeAccounts', account.id.toString()), account, { merge: true });
       }));
-    } catch (error) {
-      console.error('Error saving Breeze accounts:', error);
-      throw error;
-    }
+    } catch (error) { console.error('Error saving Breeze accounts:', error); throw error; }
   };
 
   const handleDownload = () => {
@@ -326,54 +231,36 @@ const FileUploader: React.FC = () => {
       link.href = URL.createObjectURL(convertedFile);
       link.download = 'BreezeCMS_Output.csv';
       link.click();
-
-      // Clear the file input value after the download is triggered
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-
-      // Update the status message and hide the download button
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setStatus('File downloaded successfully.');
       setShowDownloadButton(false);
     }
   };
 
-  const handleDelete = (accountId: number) => {
-    setAccountIdToDelete(accountId);
-    setDeleteDialogOpen(true);
-  };
+  const handleDelete = (accountId: number) => { setAccountIdToDelete(accountId); setDeleteDialogOpen(true); };
 
   const confirmDelete = async () => {
     if (accountIdToDelete !== null) {
       const updatedAccounts = breezeAccounts.filter((account) => account.id !== accountIdToDelete);
-
       setBreezeAccounts(updatedAccounts);
       setFilteredAccounts(updatedAccounts);
       await saveBreezeAccounts(updatedAccounts);
       setDeleteDialogOpen(false);
       setAccountIdToDelete(null);
-
-      try {
-        await deleteDoc(doc(db, 'breezeAccounts', accountIdToDelete.toString()));
-      } catch (error) {
-        console.error('Error deleting Breeze account:', error);
-      }
+      try { await deleteDoc(doc(db, 'breezeAccounts', accountIdToDelete.toString())); }
+      catch (error) { console.error('Error deleting Breeze account:', error); }
     }
   };
 
   useEffect(() => {
     const filtered = breezeAccounts.filter(
-        (acc: any) =>
-            acc.id === parseInt(searchQuery, 10) ||
-            acc.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      (acc: any) => acc.id === parseInt(searchQuery, 10) ||
+        acc.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase().includes(searchQuery.toLowerCase()))
     );
     setFilteredAccounts(filtered);
   }, [searchQuery, breezeAccounts]);
 
-  const handleEdit = (account: any) => {
-    setEditAccount(account);
-    setDialogOpen(true);
-  };
+  const handleEdit = (account: any) => { setEditAccount(account); setDialogOpen(true); };
 
   const handleEditSave = async () => {
     try {
@@ -382,9 +269,7 @@ const FileUploader: React.FC = () => {
       setFilteredAccounts(updatedAccounts);
       setDialogOpen(false);
       await setDoc(doc(db, 'breezeAccounts', editAccount.id.toString()), editAccount, { merge: true });
-    } catch (error) {
-      console.error('Error updating Breeze account:', error);
-    }
+    } catch (error) { console.error('Error updating Breeze account:', error); }
   };
 
   const handleLogin = async () => {
@@ -399,18 +284,10 @@ const FileUploader: React.FC = () => {
     }
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('isAuthenticated');
-    setAuthDialogOpen(true);
-  };
+  const handleLogout = () => { setIsAuthenticated(false); localStorage.removeItem('isAuthenticated'); setAuthDialogOpen(true); };
 
   const handleCreateAccount = async () => {
-    // Add null check for newAccountId
-    if (newAccountId === null) {
-      alert("Please enter a valid Account ID");
-      return;
-    }
+    if (newAccountId === null) { alert("Please enter a valid Account ID"); return; }
     try {
       const account = { id: newAccountId, zelleAccounts: [{ name: newAccountName }] };
       await setDoc(doc(db, 'breezeAccounts', newAccountId.toString()), account);
@@ -418,60 +295,30 @@ const FileUploader: React.FC = () => {
       setCreateDialogOpen(false);
       setNewAccountName('');
       setNewAccountId(null);
-    } catch (error) {
-      console.error('Error creating Breeze account:', error);
-      setCreateDialogOpen(false);
-    }
+    } catch (error) { console.error('Error creating Breeze account:', error); setCreateDialogOpen(false); }
   };
 
   const handleMissingAccountSave = async () => {
     if (missingAccountId && currentMissingAccount) {
       const updatedAccounts = [...breezeAccounts];
       const existingAccount = updatedAccounts.find((account) => account.id === missingAccountId);
-      
       if (existingAccount) {
-        // Check if name already exists to avoid duplicates
-        const nameExists = existingAccount.zelleAccounts.some(
-          (zelle: any) => zelle.name.toLowerCase() === currentMissingAccount.toLowerCase()
-        );
-        
-        if (!nameExists) {
-          existingAccount.zelleAccounts = [
-            ...existingAccount.zelleAccounts,
-            { name: currentMissingAccount }
-          ];
-        }
+        const nameExists = existingAccount.zelleAccounts.some((zelle: any) => zelle.name.toLowerCase() === currentMissingAccount.toLowerCase());
+        if (!nameExists) existingAccount.zelleAccounts = [...existingAccount.zelleAccounts, { name: currentMissingAccount }];
       } else {
-        updatedAccounts.push({ 
-          id: missingAccountId, 
-          zelleAccounts: [{ name: currentMissingAccount }] 
-        });
+        updatedAccounts.push({ id: missingAccountId, zelleAccounts: [{ name: currentMissingAccount }] });
       }
-      
       setBreezeAccounts(updatedAccounts);
       setFilteredAccounts(updatedAccounts);
-
       const updatedBreezeData = breezeData.map((entry: any) => {
-        if (`${entry["First Name"]} ${entry["Last Name"]}`.trim() === currentMissingAccount) {
-          entry["Breeze ID"] = missingAccountId;
-        }
+        if (`${entry["First Name"]} ${entry["Last Name"]}`.trim() === currentMissingAccount) entry["Breeze ID"] = missingAccountId;
         return entry;
       });
-
       setBreezeData(updatedBreezeData);
-
       try {
-        // When saving to Firestore, save the complete zelleAccounts array
         const accountToSave = updatedAccounts.find(acc => acc.id === missingAccountId);
-        await setDoc(
-          doc(db, 'breezeAccounts', missingAccountId.toString()),
-          accountToSave,
-          { merge: true }
-        );
-      } catch (error) {
-        console.error('Error updating Breeze account:', error);
-      }
-
+        await setDoc(doc(db, 'breezeAccounts', missingAccountId.toString()), accountToSave, { merge: true });
+      } catch (error) { console.error('Error updating Breeze account:', error); }
       const nextMissingAccount = missingAccounts.slice(1);
       setMissingAccounts(nextMissingAccount);
       if (nextMissingAccount.length > 0) {
@@ -495,9 +342,7 @@ const FileUploader: React.FC = () => {
     setStatus('Import cancelled.');
     setConvertedFile(null);
     setShowDownloadButton(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSendResetEmail = async () => {
@@ -505,350 +350,93 @@ const FileUploader: React.FC = () => {
       await sendPasswordResetEmail(auth, resetEmail);
       alert('Password reset email sent.');
       setForgotPasswordDialogOpen(false);
-    } catch (error) {
-      console.error('Error sending reset email:', error);
-      alert('Error sending reset email.');
-    }
+    } catch (error) { console.error('Error sending reset email:', error); alert('Error sending reset email.'); }
   };
 
   const exportBreezeAccounts = async () => {
-    const data = breezeAccounts.map(account => ({
-      id: account.id,
-      zelleAccounts: account.zelleAccounts.map(zelleAccount => zelleAccount.name)
-    }));
-
+    const data = breezeAccounts.map(account => ({ id: account.id, zelleAccounts: account.zelleAccounts.map((z: any) => z.name) }));
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'breeze_accounts.json';
-    document.body.appendChild(a);
-    a.click();
+    a.href = url; a.download = 'breeze_accounts.json';
+    document.body.appendChild(a); a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  const renderContent = () => {
-    if (activePage === 'export') {
-      return (
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h6">Zelle to Breeze Converter</Typography>
-            <TextField
-                label="Batch Name"
-                value={batchName}
-                onChange={(e) => setBatchName(e.target.value)}
-                fullWidth
-                margin="normal"
-            />
-            <TextField
-                label="Batch Number"
-                value={batchNumber}
-                onChange={(e) => setBatchNumber(e.target.value)}
-                fullWidth
-                margin="normal"
-            />
-            <Button variant="contained" component="label" sx={{ mt: 2 }}>
-              Upload File
-              <input type="file" hidden accept=".csv" onChange={handleFileUpload} ref={fileInputRef}/>
-            </Button>
-            <Typography variant="body1" sx={{ mt: 2 }}>{status}</Typography>
-            {convertedFile && showDownloadButton && (
-                <Button variant="outlined" onClick={handleDownload} sx={{ mt: 2 }}>
-                  Download Converted File
-                </Button>
-            )}
-          </Box>
-      );
-    }
-
-    if (activePage === 'edit') {
-      return (
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h6">Breeze Accounts</Typography>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2, gap: 1 }}>
-              <Button variant="contained" onClick={() => setCreateDialogOpen(true)}>
-                Create Account
-              </Button>
-              <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-                <MoreVertIcon />
-              </IconButton>
-              <Menu
-                  anchorEl={anchorEl}
-                  open={menuOpen}
-                  onClose={() => setAnchorEl(null)}
-              >
-                <MenuItem component="label">
-                  Bulk Upload
-                  <input type="file" hidden accept=".csv" onChange={handleBulkUpload} />
-                </MenuItem>
-                <MenuItem onClick={() => {
-                  exportBreezeAccounts();
-                  setAnchorEl(null);
-                }}>
-                  Bulk Export
-                </MenuItem>
-              </Menu>
-            </Box>
-            <TextField
-                label="Search by ID or Name"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                fullWidth
-                margin="normal"
-                InputProps={{
-                  endAdornment: (
-                      <IconButton>
-                        <SearchIcon />
-                      </IconButton>
-                  ),
-                }}
-            />
-            <DataGrid
-                rows={filteredAccounts.map((account: any, index: number) => ({
-                  id: account.id,
-                  zelleAccounts: account.zelleAccounts,
-                  index,
-                }))}
-                columns={[
-                  { field: 'id', headerName: 'Breeze ID', width: 150 },
-                  {
-                    field: 'zelleAccounts',
-                    headerName: 'Zelle Accounts',
-                    flex: 2,
-                    valueGetter: (params) => 
-                      params.row.zelleAccounts
-                        ? params.row.zelleAccounts.map((zelle: any) => zelle.name).join(', ')
-                        : '',
-                    renderCell: (params) => params.value,
-                    sortComparator: (v1: string, v2: string) => v1.localeCompare(v2),
-                  },
-                  {
-                    field: 'actions',
-                    headerName: 'Actions',
-                    width: 150,
-                    renderCell: (params) => (
-                        <>
-                          <IconButton onClick={() => handleEdit(params.row)}>
-                            <EditIcon />
-                          </IconButton>
-                          <IconButton onClick={() => handleDelete(params.row.id)}>
-                            <DeleteIcon />
-                          </IconButton>
-                        </>
-                    ),
-                  },
-                ]}
-                paginationModel={paginationModel}
-                onPaginationModelChange={setPaginationModel}
-                pageSizeOptions={[10, 20]}
-                autoHeight
-            />
-          </Box>
-      );
-    }
-  };
+  // ===== Render =====
+  if (!isAuthenticated) {
+    return (
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <LoginScreen
+          email={email} setEmail={setEmail}
+          password={password} setPassword={setPassword}
+          onLogin={handleLogin}
+          onForgotPassword={() => setForgotPasswordDialogOpen(true)}
+        />
+        <ForgotPasswordDialog
+          open={forgotPasswordDialogOpen}
+          onClose={() => setForgotPasswordDialogOpen(false)}
+          resetEmail={resetEmail} setResetEmail={setResetEmail}
+          onSend={handleSendResetEmail}
+        />
+      </ThemeProvider>
+    );
+  }
 
   return (
-      <ThemeProvider theme={theme}>
-        <Box sx={{ display: 'flex' }}>
-          <CssBaseline />
-          <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-            <Toolbar>
-              <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-                EEBC Dallas
-              </Typography>
-              <Switch
-                  checked={darkMode}
-                  onChange={() => setDarkMode(!darkMode)}
-                  icon={<DarkModeIcon />}
-                  checkedIcon={<DarkModeIcon />}
-              />
-              {isAuthenticated && (
-                <Button color="inherit" onClick={handleLogout}>
-                  Logout
-                </Button>
-              )}
-            </Toolbar>
-          </AppBar>
-          <Drawer
-              variant="permanent"
-              sx={{
-                width: drawerWidth,
-                flexShrink: 0,
-                [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
-              }}
-          >
-            <Toolbar />
-            <List>
-              <ListItem button selected={activePage === 'export'} onClick={() => setActivePage('export')}>
-                <ListItemText primary="Zelle to Breeze Converter" />
-              </ListItem>
-              <ListItem button selected={activePage === 'edit'} onClick={() => setActivePage('edit')}>
-                <ListItemText primary="Breeze Accounts" />
-              </ListItem>
-            </List>
-          </Drawer>
-          <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-            <Toolbar />
-            {isAuthenticated ? renderContent() : null}
-          </Box>
-          <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
-            <DialogTitle>Edit Account</DialogTitle>
-            <DialogContent>
-              {editAccount && (
-                  <Box>
-                    <TextField
-                        label="Breeze ID"
-                        type="number"
-                        disabled
-                        value={editAccount.id}
-                        onChange={(e) => setEditAccount({ ...editAccount, id: parseInt(e.target.value, 10) })}
-                        fullWidth
-                        margin="normal"
-                    />
-                    <TextField
-                        label="Zelle Accounts"
-                        value={editAccount.zelleAccounts.map((zelle: any) => zelle.name).join(', ')}
-                        onChange={(e) =>
-                            setEditAccount({
-                              ...editAccount,
-                              zelleAccounts: e.target.value.split(',').map((name: string) => ({ name: name.trim() })),
-                            })
-                        }
-                        fullWidth
-                        margin="normal"
-                    />
-                  </Box>
-              )}
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleEditSave} variant="contained">
-                Save
-              </Button>
-            </DialogActions>
-          </Dialog>
-          <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-            <DialogTitle>Confirm Delete</DialogTitle>
-            <DialogContent>
-              <Typography>Are you sure you want to delete this account?</Typography>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-              <Button onClick={confirmDelete} variant="contained" color="error">
-                Delete
-              </Button>
-            </DialogActions>
-          </Dialog>
-          <Dialog open={authDialogOpen} onClose={() => setAuthDialogOpen(false)}>
-            <DialogTitle>Login</DialogTitle>
-            <DialogContent>
-              <TextField
-                  label="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  fullWidth
-                  margin="normal"
-              />
-              <TextField
-                  label="Password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  fullWidth
-                  margin="normal"
-              />
-              <Button onClick={() => setForgotPasswordDialogOpen(true)} sx={{ mt: 1 }}>
-                Forgot Password?
-              </Button>
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleLogin} variant="contained">
-                Login
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          {/* New Forgot Password Dialog */}
-          <Dialog open={forgotPasswordDialogOpen} onClose={() => setForgotPasswordDialogOpen(false)}>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogContent>
-              <TextField
-                  label="Enter your email"
-                  value={resetEmail}
-                  onChange={(e) => setResetEmail(e.target.value)}
-                  fullWidth
-                  margin="normal"
-              />
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setForgotPasswordDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleSendResetEmail} variant="contained">
-                Send Reset Email
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
-            <DialogTitle>Create New Account</DialogTitle>
-            <DialogContent>
-              <TextField
-                  label="Account ID"
-                  type="number"
-                  value={newAccountId || ''}
-                  onChange={(e) => setNewAccountId(parseInt(e.target.value, 10))}
-                  fullWidth
-                  margin="normal"
-              />
-              <TextField
-                  label="Account Name"
-                  value={newAccountName}
-                  onChange={(e) => setNewAccountName(e.target.value)}
-                  fullWidth
-                  margin="normal"
-              />
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleCreateAccount} variant="contained">
-                Create
-              </Button>
-            </DialogActions>
-          </Dialog>
-          <Dialog open={missingAccountDialogOpen} onClose={() => setMissingAccountDialogOpen(false)}>
-            <DialogTitle>Missing Account</DialogTitle>
-            <DialogContent>
-              <Typography>Please provide Breeze ID for {currentMissingAccount}:</Typography>
-              <TextField
-                  label="Breeze ID"
-                  type="number"
-                  value={missingAccountId || ''}
-                  onChange={(e) => setMissingAccountId(parseInt(e.target.value, 10))}
-                  fullWidth
-                  margin="normal"
-              />
-              {suggestedAccounts.length > 0 && (
-                <Box sx={{ mt: 2 }}>
-                  <Typography variant="subtitle1">Suggested Accounts:</Typography>
-                  <List>
-                    {suggestedAccounts.map((account) => (
-                      <ListItem key={account.id} button onClick={() => setMissingAccountId(account.id)}>
-                        <ListItemText primary={`${account.id} - ${account.zelleAccounts.map((zelle: any) => zelle.name).join(', ')}`} />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              )}
-            </DialogContent>
-            <DialogActions>
-              <Button onClick={handleCancelImport}>Cancel Import</Button>
-              <Button onClick={handleMissingAccountSave} variant="contained">
-                Save
-              </Button>
-            </DialogActions>
-          </Dialog>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <Box sx={{ display: 'flex', minHeight: '100vh', background: 'var(--background)' }}>
+        <Sidebar
+          activePage={activePage} setActivePage={setActivePage}
+          darkMode={darkMode} setDarkMode={setDarkMode}
+          onLogout={handleLogout}
+        />
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            ml: '280px',
+            p: { xs: 3, md: 5 },
+            pt: { xs: 4, md: 5 },
+            minHeight: '100vh',
+          }}
+        >
+          {activePage === 'export' && (
+            <ExportPage
+              status={status}
+              batchName={batchName} setBatchName={setBatchName}
+              batchNumber={batchNumber} setBatchNumber={setBatchNumber}
+              convertedFile={convertedFile}
+              showDownloadButton={showDownloadButton}
+              handleFileUpload={handleFileUpload}
+              handleDownload={handleDownload}
+              fileInputRef={fileInputRef as React.RefObject<HTMLInputElement>}
+            />
+          )}
+          {activePage === 'edit' && (
+            <EditPage
+              filteredAccounts={filteredAccounts}
+              searchQuery={searchQuery} setSearchQuery={setSearchQuery}
+              paginationModel={paginationModel} setPaginationModel={setPaginationModel}
+              onEdit={handleEdit} onDelete={handleDelete}
+              onCreateAccount={() => setCreateDialogOpen(true)}
+              onBulkUpload={handleBulkUpload}
+              onBulkExport={exportBreezeAccounts}
+            />
+          )}
         </Box>
-      </ThemeProvider>
+
+        {/* All Dialogs */}
+        <EditDialog open={dialogOpen} onClose={() => setDialogOpen(false)} editAccount={editAccount} setEditAccount={setEditAccount} onSave={handleEditSave} />
+        <DeleteDialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} onConfirm={confirmDelete} />
+        <CreateDialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} newAccountId={newAccountId} setNewAccountId={setNewAccountId} newAccountName={newAccountName} setNewAccountName={setNewAccountName} onSave={handleCreateAccount} />
+        <ForgotPasswordDialog open={forgotPasswordDialogOpen} onClose={() => setForgotPasswordDialogOpen(false)} resetEmail={resetEmail} setResetEmail={setResetEmail} onSend={handleSendResetEmail} />
+        <MissingAccountDialog open={missingAccountDialogOpen} currentMissingAccount={currentMissingAccount} missingAccountId={missingAccountId} setMissingAccountId={setMissingAccountId} suggestedAccounts={suggestedAccounts} onSave={handleMissingAccountSave} onCancel={handleCancelImport} />
+      </Box>
+    </ThemeProvider>
   );
 };
 
