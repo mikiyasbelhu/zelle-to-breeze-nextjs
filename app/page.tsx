@@ -241,14 +241,14 @@ const FileUploader: React.FC = () => {
 
   const confirmDelete = async () => {
     if (accountIdToDelete !== null) {
-      const updatedAccounts = breezeAccounts.filter((account) => account.id !== accountIdToDelete);
-      setBreezeAccounts(updatedAccounts);
-      setFilteredAccounts(updatedAccounts);
-      await saveBreezeAccounts(updatedAccounts);
-      setDeleteDialogOpen(false);
-      setAccountIdToDelete(null);
-      try { await deleteDoc(doc(db, 'breezeAccounts', accountIdToDelete.toString())); }
-      catch (error) { console.error('Error deleting Breeze account:', error); }
+      try {
+        await deleteDoc(doc(db, 'breezeAccounts', accountIdToDelete.toString()));
+        const updatedAccounts = breezeAccounts.filter((account) => account.id !== accountIdToDelete);
+        setBreezeAccounts(updatedAccounts);
+        setFilteredAccounts(updatedAccounts);
+        setDeleteDialogOpen(false);
+        setAccountIdToDelete(null);
+      } catch (error) { console.error('Error deleting Breeze account:', error); }
     }
   };
 
@@ -264,11 +264,11 @@ const FileUploader: React.FC = () => {
 
   const handleEditSave = async () => {
     try {
+      await setDoc(doc(db, 'breezeAccounts', editAccount.id.toString()), editAccount, { merge: true });
       const updatedAccounts = breezeAccounts.map((acc: any) => (acc.id === editAccount.id ? editAccount : acc));
       setBreezeAccounts(updatedAccounts);
       setFilteredAccounts(updatedAccounts);
       setDialogOpen(false);
-      await setDoc(doc(db, 'breezeAccounts', editAccount.id.toString()), editAccount, { merge: true });
     } catch (error) { console.error('Error updating Breeze account:', error); }
   };
 
